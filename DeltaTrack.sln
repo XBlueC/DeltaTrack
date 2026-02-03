@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Tests\Tests.csproj", "{6C1893AB-E17A-45BD-94E6-CB85A6FCDEE7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Analyzers", "Analyzers\Analyzers.csproj", "{ECA67C7D-B81D-4C2F-B67C-7715A009CE33}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DirtyTrackable", "DirtyTrackable\DirtyTrackable.csproj", "{7C1276CE-604B-4055-9014-151C8E481B7F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6C1893AB-E17A-45BD-94E6-CB85A6FCDEE7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6C1893AB-E17A-45BD-94E6-CB85A6FCDEE7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6C1893AB-E17A-45BD-94E6-CB85A6FCDEE7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6C1893AB-E17A-45BD-94E6-CB85A6FCDEE7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ECA67C7D-B81D-4C2F-B67C-7715A009CE33}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ECA67C7D-B81D-4C2F-B67C-7715A009CE33}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ECA67C7D-B81D-4C2F-B67C-7715A009CE33}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ECA67C7D-B81D-4C2F-B67C-7715A009CE33}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7C1276CE-604B-4055-9014-151C8E481B7F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7C1276CE-604B-4055-9014-151C8E481B7F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7C1276CE-604B-4055-9014-151C8E481B7F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7C1276CE-604B-4055-9014-151C8E481B7F}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

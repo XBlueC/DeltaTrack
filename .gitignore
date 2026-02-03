@@ -1,0 +1,9 @@
+/.idea
+/.vs
+/Analyzers/bin
+/Analyzers/obj
+/DirtyTrackable/obj
+/DirtyTrackable/bin
+/Tests/obj
+/Tests/bin
+/*.user
