@@ -37,7 +37,6 @@ public class DirtyTracker
                 foreach (DictionaryEntry o in dictionary)
                     if (o.Value is IDirtyTrackable trackable)
                         trackable.DirtyStateChanged += action;
-
                 break;
             }
             case ICollection collection:
@@ -45,7 +44,6 @@ public class DirtyTracker
                 foreach (var o in collection)
                     if (o is IDirtyTrackable trackable)
                         trackable.DirtyStateChanged += action;
-
                 break;
             }
             case IDirtyTrackable trackable:
@@ -65,7 +63,6 @@ public class DirtyTracker
                 foreach (DictionaryEntry o in dictionary)
                     if (o.Value is IDirtyTrackable trackable)
                         trackable.DirtyStateChanged -= action;
-
                 break;
             }
             case ICollection collection:
@@ -73,7 +70,6 @@ public class DirtyTracker
                 foreach (var o in collection)
                     if (o is IDirtyTrackable trackable)
                         trackable.DirtyStateChanged -= action;
-
                 break;
             }
             case IDirtyTrackable trackable:

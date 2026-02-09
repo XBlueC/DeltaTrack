@@ -200,7 +200,7 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         AppendConstructor(sb, classInfo);
         AppendProperties(sb, classInfo);
         AppendOnChangeMethods(sb, classInfo);
-        AppendHelperMethods(sb);
+        AppendHelperMethods(sb, classInfo);
 
         sb.AppendLine("    }");
 
@@ -378,7 +378,7 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         sb.AppendLine();
     }
 
-    private static void AppendHelperMethods(StringBuilder sb)
+    private static void AppendHelperMethods(StringBuilder sb, ClassInfo classInfo)
     {
         sb.AppendLine("        public void MarkFieldDirty(string field)");
         sb.AppendLine("        {");
@@ -386,10 +386,78 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         sb.AppendLine("            DirtyStateChanged?.Invoke();");
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine("        public void MarkClean()");
+        sb.AppendLine("        public void MarkClean(bool recursive = false)");
         sb.AppendLine("        {");
         sb.AppendLine("            _dirtyTracker?.MarkClean();");
+        sb.AppendLine("            ");
+        sb.AppendLine("            if (recursive)");
+        sb.AppendLine("            {");
+        
+        var trackableFields = classInfo.Fields.Where(f => f.IsDirtyTrackable || f.IsCollection);
+        foreach (var field in trackableFields)
+        {
+            var propName = ToPropertyName(field.Name);
+            if (field.IsDirtyTrackable)
+            {
+                sb.AppendLine($@"                if ({propName} is global::DirtyTrackable.IDirtyTrackable trackable_{propName} && trackable_{propName}.IsDirty())");
+                sb.AppendLine($@"                    trackable_{propName}.MarkClean(true);");
+            }
+            else if (field.IsCollection)
+            {
+                if (IsCollectionOfDirtyTrackable(field.TypeSymbol))
+                {
+                    sb.AppendLine($@"                if ({propName} != null)");
+                    sb.AppendLine($@"                {{");
+                    sb.AppendLine($@"                    foreach (var item in {propName})");
+                    sb.AppendLine($@"                    {{");
+                    sb.AppendLine($@"                        if (item is global::DirtyTrackable.IDirtyTrackable trackableItem && trackableItem.IsDirty())");
+                    sb.AppendLine($@"                            trackableItem.MarkClean(true);");
+                    sb.AppendLine($@"                    }}");
+                    sb.AppendLine($@"                }}");
+                }
+                else if (IsDictionaryWithDirtyTrackableValues(field.TypeSymbol))
+                {
+                    sb.AppendLine($@"                if ({propName} != null)");
+                    sb.AppendLine($@"                {{");
+                    sb.AppendLine($@"                    foreach (var kvp in {propName})");
+                    sb.AppendLine($@"                    {{");
+                    sb.AppendLine($@"                        if (kvp.Value is global::DirtyTrackable.IDirtyTrackable trackableValue && trackableValue.IsDirty())");
+                    sb.AppendLine($@"                            trackableValue.MarkClean(true);");
+                    sb.AppendLine($@"                    }}");
+                    sb.AppendLine($@"                }}");
+                }
+            }
+        }
+        
+        sb.AppendLine("            }");
         sb.AppendLine("        }");
+    }
+
+    private static bool IsCollectionOfDirtyTrackable(ITypeSymbol typeSymbol)
+    {
+        if (typeSymbol is not INamedTypeSymbol namedType) return false;
+        
+        var constructedFrom = namedType.ConstructedFrom.ToDisplayString();
+        if (constructedFrom != "System.Collections.Generic.List<T>" && 
+            constructedFrom != "System.Collections.Generic.HashSet<T>") return false;
+            
+        if (namedType.TypeArguments.Length == 0) return false;
+        
+        var elementType = namedType.TypeArguments[0];
+        return HasTrackableAttribute(elementType);
+    }
+
+    private static bool IsDictionaryWithDirtyTrackableValues(ITypeSymbol typeSymbol)
+    {
+        if (typeSymbol is not INamedTypeSymbol namedType) return false;
+        
+        var constructedFrom = namedType.ConstructedFrom.ToDisplayString();
+        if (constructedFrom != "System.Collections.Generic.Dictionary<TKey, TValue>") return false;
+            
+        if (namedType.TypeArguments.Length < 2) return false;
+        
+        var valueType = namedType.TypeArguments[1];
+        return HasTrackableAttribute(valueType);
     }
 
     private static string ToPropertyName(string fieldName)
