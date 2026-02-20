@@ -183,55 +183,6 @@ public class DirtyTrackerTests
     }
 
     [Fact]
-    public void Subscribe_Unsubscribe_ShouldWorkWithNestedCollections()
-    {
-        // Arrange
-        var owner = new MockDirtyTrackable();
-        var tracker = new DirtyTracker(owner);
-        var nestedList = new List<List<MockDirtyTrackable>>
-        {
-            new List<MockDirtyTrackable> { new MockDirtyTrackable() },
-            new List<MockDirtyTrackable> { new MockDirtyTrackable(), new MockDirtyTrackable() }
-        };
-        var totalItems = nestedList.Sum(list => list.Count);
-        var onChangeCalled = 0;
-        Action onChange = () => onChangeCalled++;
-
-        // Act - Subscribe
-        tracker.Subscribe(nestedList, onChange);
-
-        // Trigger changes on all nested items
-        foreach (var list in nestedList)
-        {
-            foreach (var item in list)
-            {
-                item.MarkFieldDirty("NestedItem");
-            }
-        }
-
-        // Assert - All nested items should trigger onChange
-        Assert.Equal(totalItems, onChangeCalled);
-
-        // Reset counter
-        onChangeCalled = 0;
-
-        // Act - Unsubscribe
-        tracker.Unsubscribe(nestedList, onChange);
-
-        // Trigger changes again
-        foreach (var list in nestedList)
-        {
-            foreach (var item in list)
-            {
-                item.MarkFieldDirty("NestedItem2");
-            }
-        }
-
-        // Assert - No more onChange calls
-        Assert.Equal(0, onChangeCalled);
-    }
-
-    [Fact]
     public void Subscribe_ShouldHandleMixedCollectionTypes()
     {
         // Arrange

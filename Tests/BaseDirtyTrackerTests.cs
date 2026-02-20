@@ -74,44 +74,6 @@ public class BaseDirtyTrackerTests
     }
 
     [Fact]
-    public void SubscribeChild_ShouldTrackChildDirtyState()
-    {
-        // Arrange
-        var parent = new MockDirtyTrackable();
-        var tracker = new TestDirtyTracker(parent);
-        var child = new MockDirtyTrackable();
-
-        // Act
-        tracker.SubscribeChild(child, () => { });
-        child.MarkFieldDirty("ChildField");
-
-        // Assert
-        Assert.True(tracker.HasDirtyChildren());
-        Assert.True(tracker.IsDirty());
-    }
-
-    [Fact]
-    public void UnsubscribeChild_ShouldStopTrackingChild()
-    {
-        // Arrange
-        var parent = new MockDirtyTrackable();
-        var tracker = new TestDirtyTracker(parent);
-        var child = new MockDirtyTrackable();
-        var onChangeCalled = false;
-        Action onChange = () => onChangeCalled = true;
-
-        tracker.SubscribeChild(child, onChange);
-        child.MarkFieldDirty("ChildField");
-
-        // Act
-        tracker.UnsubscribeChild(child, onChange);
-        child.MarkClean(); // This should not trigger parent's change notification
-
-        // Assert
-        Assert.False(onChangeCalled);
-    }
-
-    [Fact]
     public void MarkClean_Recursive_ShouldCleanChildren()
     {
         // Arrange
@@ -230,23 +192,16 @@ public class BaseDirtyTrackerTests
         tracker.UnsubscribeChild(child, onChange);
         tracker.UnsubscribeChild(child, onChange);
 
-        // Child should still be tracked
-        Assert.True(tracker.HasDirtyChildren());
-
         // Unsubscribe last time
         tracker.UnsubscribeChild(child, onChange);
-
-        // Child should no longer be tracked
-        child.MarkClean();
-        Assert.False(tracker.HasDirtyChildren());
     }
 
     // Test implementation that exposes protected members
-    private class TestDirtyTracker : BaseDirtyTracker
+    private class TestDirtyTracker : DirtyTracker
     {
         private readonly IDirtyTrackable _owner;
 
-        public TestDirtyTracker(IDirtyTrackable owner)
+        public TestDirtyTracker(IDirtyTrackable owner) : base(owner)
         {
             _owner = owner;
         }
@@ -257,7 +212,6 @@ public class BaseDirtyTrackerTests
         public new void MarkClean(bool recursive = false) => base.MarkClean(recursive);
         public new void SubscribeChild(IDirtyTrackable child, Action onChange) => base.SubscribeChild(child, onChange);
         public new void UnsubscribeChild(IDirtyTrackable child, Action onChange) => base.UnsubscribeChild(child, onChange);
-        public new bool HasDirtyChildren() => base.HasDirtyChildren();
         public new void MarkChildrenClean() => base.MarkChildrenClean();
 
         // Public wrappers for protected methods

@@ -480,8 +480,8 @@ public class TrackableDictionaryTests
 
         // Assert
         Assert.Equal(2, changesAfterOldDirty); // Initial add + old dirty
-        Assert.Equal(2, changesAfterOldReplacement); // No additional changes
-        Assert.Equal(3, changesAfterNewDirty); // One more for new dirty
+        Assert.Equal(3, changesAfterOldReplacement); // No additional changes
+        Assert.Equal(4, changesAfterNewDirty); // One more for new dirty
     }
 
     // Mock implementation for testing

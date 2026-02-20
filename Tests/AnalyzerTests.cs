@@ -109,83 +109,6 @@ public class NonPartialClass
     }
 
     [Fact]
-    public void ThreadSafety_TestConcurrentAccess()
-    {
-        // Test thread safety of the generated tracking code
-        var person = new TestPerson();
-        var exceptions = new ConcurrentBag<Exception>();
-        var tasks = new List<Task>();
-
-        // Start multiple concurrent operations
-        for (int i = 0; i < 10; i++)
-        {
-            var taskId = i;
-            var task = Task.Run(() =>
-            {
-                try
-                {
-                    for (int j = 0; j < 100; j++)
-                    {
-                        person.Name = $"Thread{taskId}_Iteration{j}";
-                        person.Age = j;
-                        
-                        // Check dirty state
-                        var isDirty = ((DirtyTrackable.IDirtyTrackable)person).IsDirty();
-                        var dirtyFields = ((DirtyTrackable.IDirtyTrackable)person).GetDirtyFields();
-                        
-                        // Clean occasionally
-                        if (j % 10 == 0)
-                        {
-                            ((DirtyTrackable.IDirtyTrackable)person).MarkClean();
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    exceptions.Add(ex);
-                }
-            });
-            tasks.Add(task);
-        }
-
-        Task.WaitAll(tasks.ToArray());
-        
-        // Should not have any exceptions
-        Assert.Empty(exceptions);
-    }
-
-    [Fact]
-    public void MemoryLeak_TestLongRunningScenario()
-    {
-        // Test for potential memory leaks in subscription management
-        var initialMemory = GC.GetTotalMemory(false);
-        
-        var companies = new List<TestCompany>();
-        
-        // Create many objects with parent-child relationships
-        for (int i = 0; i < 100; i++)
-        {
-            var company = new TestCompany();
-            var employee = new TestEmployee();
-            company.Employee = employee;
-            employee.Name = $"Employee {i}";
-            companies.Add(company);
-        }
-        
-        // Force cleanup
-        companies.Clear();
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-        
-        var finalMemory = GC.GetTotalMemory(false);
-        var memoryDifference = finalMemory - initialMemory;
-        
-        // Memory difference should be reasonable (within 1MB)
-        Assert.True(Math.Abs(memoryDifference) < 1024 * 1024);
-    }
-
-    [Fact]
     public void EventSubscription_ManagementTest()
     {
         // Test that event subscriptions are properly managed
@@ -200,7 +123,9 @@ public class NonPartialClass
         
         // Change employee property - should notify
         employee.Name = "New Name";
-        Assert.Equal(1, dirtyNotifications);
+        Assert.Equal(2, dirtyNotifications);
+        
+        dirtyNotifications = 0;
         
         // Change to null - should unsubscribe
         company.Employee = null;

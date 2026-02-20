@@ -6,22 +6,22 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>, IDir
     where TValue : notnull where TKey : notnull
 {
     private readonly IDictionary<TKey, TValue> _inner;
-    private readonly BaseDirtyTracker _tracker;
+    private readonly DirtyTracker _tracker;
 
     public TrackableDictionary(Action onChanged) : this(onChanged, new Dictionary<TKey, TValue>())
     {
-        DirtyStateChanged += onChanged;
+        DirtyStateChanged += onChanged ?? throw new ArgumentNullException(nameof(onChanged));
     }
 
     public TrackableDictionary(Action onChanged, IDictionary<TKey, TValue> inner)
     {
-        DirtyStateChanged += onChanged;
+        DirtyStateChanged += onChanged ?? throw new ArgumentNullException(nameof(onChanged));
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _tracker = new DirtyTracker(this);
 
         foreach (var kvp in _inner)
         {
-            _tracker.HandleItemAdded(kvp.Value, DirtyStateChanged, kvp.Key?.ToString());
+            _tracker.HandleItemAdded(kvp.Value, DirtyStateChangedHandler, kvp.Key?.ToString());
         }
     }
 
@@ -35,27 +35,27 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>, IDir
 
             if (hasOld)
             {
-                _tracker.HandleItemRemoved(oldValue, DirtyStateChanged, key?.ToString());
+                _tracker.HandleItemRemoved(oldValue, DirtyStateChangedHandler, key?.ToString());
             }
 
-            _tracker.HandleItemAdded(value, DirtyStateChanged, key?.ToString());
-            DirtyStateChanged?.Invoke();
+            _tracker.HandleItemAdded(value, DirtyStateChangedHandler, key?.ToString());
+            DirtyStateChangedHandler();
         }
     }
 
     public void Add(TKey key, TValue value)
     {
         _inner.Add(key, value);
-        _tracker.HandleItemAdded(value, DirtyStateChanged, key?.ToString());
-        DirtyStateChanged?.Invoke();
+        _tracker.HandleItemAdded(value, DirtyStateChangedHandler, key?.ToString());
+        DirtyStateChangedHandler();
     }
 
     public bool Remove(TKey key)
     {
         if (_inner.TryGetValue(key, out var value) && _inner.Remove(key))
         {
-            _tracker.HandleItemRemoved(value, DirtyStateChanged, key?.ToString());
-            DirtyStateChanged?.Invoke();
+            _tracker.HandleItemRemoved(value, DirtyStateChangedHandler, key?.ToString());
+            DirtyStateChangedHandler();
             return true;
         }
 
@@ -68,11 +68,11 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>, IDir
         {
             foreach (var kvp in _inner)
             {
-                _tracker.HandleItemRemoved(kvp.Value, DirtyStateChanged, kvp.Key?.ToString());
+                _tracker.HandleItemRemoved(kvp.Value, DirtyStateChangedHandler, kvp.Key?.ToString());
             }
 
             _inner.Clear();
-            DirtyStateChanged?.Invoke();
+            DirtyStateChangedHandler();
         }
     }
 
@@ -135,5 +135,9 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>, IDir
 
     public event Action DirtyStateChanged;
 
+    private void DirtyStateChangedHandler()
+    {
+        DirtyStateChanged?.Invoke();
+    }
     #endregion
 }
