@@ -4,55 +4,54 @@ namespace DirtyTrackable;
 
 public class TrackableList<T> : Collection<T>, IDirtyTrackable where T : notnull
 {
-    private readonly Action _onChanged;
     private readonly BaseDirtyTracker _tracker;
 
     public TrackableList(Action onChanged) : base(new List<T>())
     {
-        _onChanged = onChanged ?? throw new ArgumentNullException(nameof(onChanged));
+        DirtyStateChanged += onChanged;
         _tracker = new DirtyTracker(this);
     }
 
-    public TrackableList(Action onChanged, IEnumerable<T> initialItems) : base(new List<T>(initialItems))
+    public TrackableList(Action onChanged, IList<T> initialItems) : base(initialItems)
     {
-        _onChanged = onChanged ?? throw new ArgumentNullException(nameof(onChanged));
+        DirtyStateChanged += onChanged;
         _tracker = new DirtyTracker(this);
-        _tracker.InitializeExistingItems(initialItems, _onChanged);
+        _tracker.InitializeExistingItems(initialItems, DirtyStateChanged);
     }
 
     protected override void InsertItem(int index, T item)
     {
         base.InsertItem(index, item);
-        _tracker.HandleItemAdded(item, _onChanged, index.ToString());
-        _onChanged();
+        _tracker.HandleItemAdded(item, DirtyStateChanged, index.ToString());
+        DirtyStateChanged?.Invoke();
     }
 
     protected override void SetItem(int index, T item)
     {
         var oldItem = this[index];
         base.SetItem(index, item);
-        _tracker.HandleItemRemoved(oldItem, _onChanged, index.ToString());
-        _tracker.HandleItemAdded(item, _onChanged, index.ToString());
-        _onChanged();
+        _tracker.HandleItemRemoved(oldItem, DirtyStateChanged, index.ToString());
+        _tracker.HandleItemAdded(item, DirtyStateChanged, index.ToString());
+        DirtyStateChanged?.Invoke();
     }
 
     protected override void RemoveItem(int index)
     {
         var item = this[index];
         base.RemoveItem(index);
-        _tracker.HandleItemRemoved(item, _onChanged, index.ToString());
-        _onChanged();
+        _tracker.HandleItemRemoved(item, DirtyStateChanged, index.ToString());
+        DirtyStateChanged?.Invoke();
     }
 
     protected override void ClearItems()
     {
         for (int i = 0; i < Count; i++)
         {
-            _tracker.HandleItemRemoved(this[i], _onChanged, i.ToString());
+            _tracker.HandleItemRemoved(this[i], DirtyStateChanged, i.ToString());
         }
 
         base.ClearItems();
-        _onChanged();
+        DirtyStateChanged?.Invoke();
     }
 
     #region IDirtyTrackable Implementation

@@ -5,20 +5,20 @@ namespace DirtyTrackable;
 public class TrackableSet<T> : ISet<T>, IDirtyTrackable
 {
     private readonly ISet<T> _inner;
-    private readonly Action _onChanged;
     private readonly BaseDirtyTracker _tracker;
 
     public TrackableSet(Action onChanged)
         : this(onChanged, new HashSet<T>())
     {
+        DirtyStateChanged += onChanged;
     }
 
     public TrackableSet(Action onChanged, ISet<T> inner)
     {
-        _onChanged = onChanged ?? throw new ArgumentNullException(nameof(onChanged));
+        DirtyStateChanged += onChanged;
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _tracker = new DirtyTracker(this);
-        _tracker.InitializeExistingItems(_inner, _onChanged);
+        _tracker.InitializeExistingItems(_inner, DirtyStateChanged);
     }
 
     public bool Add(T item)
@@ -26,8 +26,8 @@ public class TrackableSet<T> : ISet<T>, IDirtyTrackable
         var added = _inner.Add(item);
         if (added)
         {
-            _tracker.HandleItemAdded(item, _onChanged);
-            _onChanged();
+            _tracker.HandleItemAdded(item, DirtyStateChanged);
+            DirtyStateChanged?.Invoke();
         }
 
         return added;
@@ -43,8 +43,8 @@ public class TrackableSet<T> : ISet<T>, IDirtyTrackable
         var removed = _inner.Remove(item);
         if (removed)
         {
-            _tracker.HandleItemRemoved(item, _onChanged);
-            _onChanged();
+            _tracker.HandleItemRemoved(item, DirtyStateChanged);
+            DirtyStateChanged?.Invoke();
         }
 
         return removed;
@@ -61,11 +61,11 @@ public class TrackableSet<T> : ISet<T>, IDirtyTrackable
         {
             foreach (var item in _inner)
             {
-                _tracker.HandleItemRemoved(item, _onChanged);
+                _tracker.HandleItemRemoved(item, DirtyStateChanged);
             }
 
             _inner.Clear();
-            _onChanged();
+            DirtyStateChanged?.Invoke();
         }
     }
 
@@ -96,12 +96,12 @@ public class TrackableSet<T> : ISet<T>, IDirtyTrackable
         {
             if (_inner.Add(item))
             {
-                _tracker.HandleItemAdded(item, _onChanged);
+                _tracker.HandleItemAdded(item, DirtyStateChanged);
                 changed = true;
             }
         }
 
-        if (changed) _onChanged();
+        if (changed) DirtyStateChanged?.Invoke();
     }
 
     public void IntersectWith(IEnumerable<T> other)
@@ -122,10 +122,10 @@ public class TrackableSet<T> : ISet<T>, IDirtyTrackable
             foreach (var item in toRemove)
             {
                 _inner.Remove(item);
-                _tracker.HandleItemRemoved(item, _onChanged);
+                _tracker.HandleItemRemoved(item, DirtyStateChanged);
             }
 
-            _onChanged();
+            DirtyStateChanged?.Invoke();
         }
     }
 
@@ -147,10 +147,10 @@ public class TrackableSet<T> : ISet<T>, IDirtyTrackable
             foreach (var item in toRemove)
             {
                 _inner.Remove(item);
-                _tracker.HandleItemRemoved(item, _onChanged);
+                _tracker.HandleItemRemoved(item, DirtyStateChanged);
             }
 
-            _onChanged();
+            DirtyStateChanged?.Invoke();
         }
     }
 
@@ -169,18 +169,18 @@ public class TrackableSet<T> : ISet<T>, IDirtyTrackable
         foreach (var item in toRemove)
         {
             _inner.Remove(item);
-            _tracker.HandleItemRemoved(item, _onChanged);
+            _tracker.HandleItemRemoved(item, DirtyStateChanged);
             changed = true;
         }
 
         foreach (var item in toAdd)
         {
             _inner.Add(item);
-            _tracker.HandleItemAdded(item, _onChanged);
+            _tracker.HandleItemAdded(item, DirtyStateChanged);
             changed = true;
         }
 
-        if (changed) _onChanged();
+        if (changed) DirtyStateChanged?.Invoke();
     }
 
     public bool IsSubsetOf(IEnumerable<T> other)
