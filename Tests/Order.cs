@@ -12,6 +12,7 @@ public partial class Order
     [TrackableField] private List<Person> _people = new();
     [TrackableField] private Address? _shippingAddress; // 嵌套 Trackable
     [TrackableField] private HashSet<string> _tags = new();
+    [TrackableField] private SortedSet<int> _sortedScores = new();
     [TrackableField] private decimal _totalAmount;
 }
 

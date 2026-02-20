@@ -14,10 +14,6 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
     private const string TrackableFieldAttributeFullName = "DirtyTrackable.TrackableFieldAttribute";
     private const string AttachAttributeAttributeFullName = "DirtyTrackable.AttachAttributeAttribute";
 
-    private const string ListT = "System.Collections.Generic.List<T>";
-    private const string DictionaryTKeyTValue = "System.Collections.Generic.Dictionary<TKey, TValue>";
-    private const string HashSetT = "System.Collections.Generic.HashSet<T>";
-
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var provider = context.SyntaxProvider
@@ -129,9 +125,12 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         return result;
     }
 
-    private static bool IsCollectionType(ITypeSymbol typeSymbol) =>
-        typeSymbol is INamedTypeSymbol named &&
-        (named.ConstructedFrom.ToDisplayString() is ListT or DictionaryTKeyTValue or HashSetT);
+    private static bool IsCollectionType(ITypeSymbol typeSymbol)
+    {
+        return typeSymbol.AllInterfaces.Any(i => 
+            i.Name == "ICollection" && 
+            i.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic");
+    }
 
     private static bool TryGetCollectionWrapperType(ITypeSymbol typeSymbol, out string wrapperTypeName, out string interfaceName)
     {
@@ -141,33 +140,33 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         if (typeSymbol is not INamedTypeSymbol namedType)
             return false;
 
-        var constructedFrom = namedType.ConstructedFrom.ToDisplayString();
         var format = SymbolDisplayFormat.FullyQualifiedFormat;
-
-        switch (constructedFrom)
+        if (ImplementsIListInterface(namedType))
         {
-            case ListT:
-                var itemType = namedType.TypeArguments[0].ToDisplayString(format);
-                wrapperTypeName = $"global::DirtyTrackable.TrackableList<{itemType}>";
-                interfaceName = $"global::System.Collections.Generic.IList<{itemType}>";
-                return true;
-
-            case DictionaryTKeyTValue:
-                var keyType = namedType.TypeArguments[0].ToDisplayString(format);
-                var valueType = namedType.TypeArguments[1].ToDisplayString(format);
-                wrapperTypeName = $"global::DirtyTrackable.TrackableDictionary<{keyType}, {valueType}>";
-                interfaceName = $"global::System.Collections.Generic.IDictionary<{keyType}, {valueType}>";
-                return true;
-
-            case HashSetT:
-                var setType = namedType.TypeArguments[0].ToDisplayString(format);
-                wrapperTypeName = $"global::DirtyTrackable.TrackableSet<{setType}>";
-                interfaceName = $"global::System.Collections.Generic.ISet<{setType}>";
-                return true;
-
-            default:
-                return false;
+            var itemType = namedType.TypeArguments[0].ToDisplayString(format);
+            wrapperTypeName = $"global::DirtyTrackable.TrackableList<{itemType}>";
+            interfaceName = $"global::System.Collections.Generic.IList<{itemType}>";
+            return true;
         }
+
+        if (ImplementsIDictionaryInterface(namedType))
+        {
+            var keyType = namedType.TypeArguments[0].ToDisplayString(format);
+            var valueType = namedType.TypeArguments[1].ToDisplayString(format);
+            wrapperTypeName = $"global::DirtyTrackable.TrackableDictionary<{keyType}, {valueType}>";
+            interfaceName = $"global::System.Collections.Generic.IDictionary<{keyType}, {valueType}>";
+            return true;
+        }
+        
+        if (ImplementsISetInterface(namedType))
+        {
+            var setType = namedType.TypeArguments[0].ToDisplayString(format);
+            wrapperTypeName = $"global::DirtyTrackable.TrackableSet<{setType}>";
+            interfaceName = $"global::System.Collections.Generic.ISet<{setType}>";
+            return true;
+        }
+
+        return false;
     }
 
     private static bool HasTrackableAttribute(ISymbol symbol) =>
@@ -181,6 +180,33 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
                 attr.Name.ToString() == "TrackableField" ||
                 attr.Name.ToString() == TrackableFieldAttributeFullName ||
                 attr.Name.ToFullString().EndsWith("TrackableField"));
+
+    private static bool ImplementsIListInterface(INamedTypeSymbol typeSymbol)
+    {
+        return typeSymbol.AllInterfaces.Any(i => 
+            i.Name == "IList" && 
+            i.IsGenericType &&
+            i.TypeArguments.Length == 1 &&
+            i.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic");
+    }
+
+    private static bool ImplementsIDictionaryInterface(INamedTypeSymbol typeSymbol)
+    {
+        return typeSymbol.AllInterfaces.Any(i => 
+            i.Name == "IDictionary" && 
+            i.IsGenericType &&
+            i.TypeArguments.Length == 2 &&
+            i.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic");
+    }
+
+    private static bool ImplementsISetInterface(INamedTypeSymbol typeSymbol)
+    {
+        return typeSymbol.AllInterfaces.Any(i => 
+            i.Name == "ISet" && 
+            i.IsGenericType &&
+            i.TypeArguments.Length == 1 &&
+            i.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic");
+    }
 
     private static void GenerateCode(SourceProductionContext context, ClassInfo classInfo)
     {
