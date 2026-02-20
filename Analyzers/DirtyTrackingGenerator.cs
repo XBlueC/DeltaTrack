@@ -216,9 +216,9 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
     {
         sb.AppendLine("        private global::DirtyTrackable.DirtyTracker _dirtyTracker;");
         sb.AppendLine();
-        sb.AppendLine("        public bool IsDirty() => _dirtyTracker?.IsDirty ?? false;");
+        sb.AppendLine("        public bool IsDirty() => _dirtyTracker?.IsDirty() ?? false;");
         sb.AppendLine();
-        sb.AppendLine("        public global::System.Collections.Generic.IReadOnlyCollection<string> GetDirtyFields() => _dirtyTracker?.DirtyFields ?? global::System.Linq.Enumerable.Empty<string>().ToList().AsReadOnly();");
+        sb.AppendLine("        public global::System.Collections.Generic.IReadOnlyCollection<string> GetDirtyFields() => _dirtyTracker?.GetDirtyFields() ?? global::System.Linq.Enumerable.Empty<string>().ToList().AsReadOnly();");
         sb.AppendLine();
         sb.AppendLine("        public event global::System.Action DirtyStateChanged;");
         sb.AppendLine();
@@ -229,14 +229,6 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         sb.AppendLine($"        public {classInfo.ClassName}()");
         sb.AppendLine("        {");
         sb.AppendLine("            _dirtyTracker = new global::DirtyTrackable.DirtyTracker(this);");
-
-        var trackableFields = classInfo.Fields.Where(f => f.IsDirtyTrackable);
-        foreach (var field in trackableFields)
-        {
-            var propName = ToPropertyName(field.Name);
-            sb.AppendLine($"            _dirtyTracker.Subscribe({propName}, On{propName}Changed);");
-        }
-
         sb.AppendLine("        }");
         sb.AppendLine();
     }

@@ -1,32 +1,18 @@
 using System.Collections;
+using System.Collections.Specialized;
+using System.ComponentModel;
 
 namespace DirtyTrackable;
 
-public class DirtyTracker
+public class DirtyTracker : BaseDirtyTracker
 {
-    private readonly HashSet<string> _dirtyFields = new();
-    private readonly IDirtyTrackable _self;
-
-    public DirtyTracker(IDirtyTrackable self)
+    private readonly IDirtyTrackable _owner;
+    public DirtyTracker(IDirtyTrackable owner)
     {
-        _self = self;
+        _owner = owner;
     }
 
-    public bool IsDirty => _dirtyFields.Count > 0;
-
-    public IReadOnlyCollection<string> DirtyFields => _dirtyFields.ToList().AsReadOnly();
-
-    public void MarkFieldDirty(string fieldName)
-    {
-        _dirtyFields.Add(fieldName);
-    }
-
-    public void MarkClean()
-    {
-        _dirtyFields.Clear();
-    }
-
-    public void Subscribe(object item, Action action)
+    public void Subscribe(object item, Action onChange)
     {
         if (item == null) return;
 
@@ -34,47 +20,67 @@ public class DirtyTracker
         {
             case IDictionary dictionary:
             {
-                foreach (DictionaryEntry o in dictionary)
-                    if (o.Value is IDirtyTrackable trackable)
-                        trackable.DirtyStateChanged += action;
+                foreach (DictionaryEntry entry in dictionary)
+                {
+                    if (entry.Value is IDirtyTrackable trackable)
+                    {
+                        SubscribeChild(trackable, onChange);
+                    }
+                }
+
                 break;
             }
             case ICollection collection:
             {
-                foreach (var o in collection)
-                    if (o is IDirtyTrackable trackable)
-                        trackable.DirtyStateChanged += action;
+                foreach (var element in collection)
+                {
+                    if (element is IDirtyTrackable trackable)
+                    {
+                        SubscribeChild(trackable, onChange);
+                    }
+                }
+
                 break;
             }
             case IDirtyTrackable trackable:
             {
-                trackable.DirtyStateChanged += action;
+                SubscribeChild(trackable, onChange);
                 break;
             }
         }
     }
 
-    public void Unsubscribe(object item, Action action)
+    public void Unsubscribe(object item, Action onChange)
     {
         switch (item)
         {
             case IDictionary dictionary:
             {
-                foreach (DictionaryEntry o in dictionary)
-                    if (o.Value is IDirtyTrackable trackable)
-                        trackable.DirtyStateChanged -= action;
+                foreach (DictionaryEntry entry in dictionary)
+                {
+                    if (entry.Value is IDirtyTrackable trackable)
+                    {
+                        UnsubscribeChild(trackable, onChange);
+                    }
+                }
+
                 break;
             }
             case ICollection collection:
             {
-                foreach (var o in collection)
-                    if (o is IDirtyTrackable trackable)
-                        trackable.DirtyStateChanged -= action;
+                foreach (var element in collection)
+                {
+                    if (element is IDirtyTrackable trackable)
+                    {
+                        UnsubscribeChild(trackable, onChange);
+                    }
+                }
+
                 break;
             }
             case IDirtyTrackable trackable:
             {
-                trackable.DirtyStateChanged -= action;
+                UnsubscribeChild(trackable, onChange);
                 break;
             }
         }

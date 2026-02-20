@@ -2,12 +2,12 @@
 
 namespace DirtyTrackable;
 
-public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>, IGetSource<IDictionary<TKey, TValue>>
+public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>, IDirtyTrackable
     where TValue : notnull where TKey : notnull
 {
     private readonly IDictionary<TKey, TValue> _inner;
     private readonly Action _onChanged;
-    private readonly Dictionary<TValue, int> _valueRefCount = new();
+    private readonly BaseDirtyTracker _tracker;
 
     public TrackableDictionary(Action onChanged) : this(onChanged, new Dictionary<TKey, TValue>())
     {
@@ -17,8 +17,12 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>, IGet
     {
         _onChanged = onChanged ?? throw new ArgumentNullException(nameof(onChanged));
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+        _tracker = new DirtyTracker(this);
 
-        foreach (var value in _inner.Values) TrackValue(value, true);
+        foreach (var kvp in _inner)
+        {
+            _tracker.HandleItemAdded(kvp.Value, _onChanged, kvp.Key?.ToString());
+        }
     }
 
     public TValue this[TKey key]
@@ -28,9 +32,13 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>, IGet
         {
             var hasOld = _inner.TryGetValue(key, out var oldValue);
             _inner[key] = value;
-            if (hasOld) TrackValue(oldValue, false);
 
-            TrackValue(value, true);
+            if (hasOld)
+            {
+                _tracker.HandleItemRemoved(oldValue, _onChanged, key?.ToString());
+            }
+
+            _tracker.HandleItemAdded(value, _onChanged, key?.ToString());
             _onChanged?.Invoke();
         }
     }
@@ -38,7 +46,7 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>, IGet
     public void Add(TKey key, TValue value)
     {
         _inner.Add(key, value);
-        TrackValue(value, true);
+        _tracker.HandleItemAdded(value, _onChanged, key?.ToString());
         _onChanged?.Invoke();
     }
 
@@ -46,7 +54,7 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>, IGet
     {
         if (_inner.TryGetValue(key, out var value) && _inner.Remove(key))
         {
-            TrackValue(value, false);
+            _tracker.HandleItemRemoved(value, _onChanged, key?.ToString());
             _onChanged?.Invoke();
             return true;
         }
@@ -58,9 +66,11 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>, IGet
     {
         if (_inner.Count > 0)
         {
-            foreach (var value in _inner.Values) TrackValue(value, false);
+            foreach (var kvp in _inner)
+            {
+                _tracker.HandleItemRemoved(kvp.Value, _onChanged, kvp.Key?.ToString());
+            }
 
-            _valueRefCount.Clear();
             _inner.Clear();
             _onChanged?.Invoke();
         }
@@ -113,47 +123,17 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>, IGet
         return _inner.GetEnumerator();
     }
 
-    public IDictionary<TKey, TValue> GetSource()
-    {
-        return _inner;
-    }
+    #region IDirtyTrackable Implementation
 
-    private void TrackValue(TValue value, bool added)
-    {
-        if (value is not IDirtyTrackable trackable)
-            return;
+    public bool IsDirty() => _tracker.IsDirty();
 
-        if (added)
-        {
-            if (_valueRefCount.TryGetValue(value, out var count))
-            {
-                _valueRefCount[value] = count + 1;
-            }
-            else
-            {
-                _valueRefCount[value] = 1;
-                trackable.DirtyStateChanged += _onChanged;
-            }
-        }
-        else
-        {
-            if (_valueRefCount.TryGetValue(value, out var count))
-            {
-                if (count <= 1)
-                {
-                    _valueRefCount.Remove(value);
-                    trackable.DirtyStateChanged -= _onChanged;
-                }
-                else
-                {
-                    _valueRefCount[value] = count - 1;
-                }
-            }
-        }
-    }
-}
+    public IReadOnlyCollection<string> GetDirtyFields() => _tracker.GetDirtyFields();
 
-public interface IGetSource<out T>
-{
-    T GetSource();
+    public void MarkFieldDirty(string field) => _tracker.MarkFieldDirty(field);
+
+    public void MarkClean(bool recursive = false) => _tracker.MarkClean(recursive);
+
+    public event Action DirtyStateChanged;
+
+    #endregion
 }

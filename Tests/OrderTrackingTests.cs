@@ -400,21 +400,22 @@ public class OrderTrackingTests
         var order = new Order();
         var person = new Person { Name = "Alice" };
         order.People.Add(person);
+        order.ShippingAddress = new Address() { Street = "Street", City = "City" };
         order.MarkClean();
 
         // 序列化 + 反序列化
         var json = JsonSerializer.Serialize(order, JsonOptions);
         var deserializedOrder = JsonSerializer.Deserialize<Order>(json, JsonOptions)!;
-
-        // 获取反序列化后的 person
         var deserializedPerson = deserializedOrder.People[0];
 
         // 修改子对象 → 应触发父级 dirty
         deserializedOrder.MarkClean();
+        deserializedOrder.ShippingAddress.City = "New City";
         deserializedPerson.Name = "Bob";
 
         Assert.True(deserializedOrder.IsDirty());
         Assert.Contains("People", deserializedOrder.GetDirtyFields());
+        Assert.Contains("ShippingAddress", deserializedOrder.GetDirtyFields());
     }
 
 
