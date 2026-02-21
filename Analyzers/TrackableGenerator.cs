@@ -8,11 +8,11 @@ using static Microsoft.CodeAnalysis.CSharp.SyntaxKind;
 namespace XAnalyzers;
 
 [Generator]
-public class DirtyPropertyGenerator : IIncrementalGenerator
+public class TrackableGenerator : IIncrementalGenerator
 {
-    private const string TrackableAttributeFullName = "DirtyTrackable.TrackableAttribute";
-    private const string TrackableFieldAttributeFullName = "DirtyTrackable.TrackableFieldAttribute";
-    private const string AttachAttributeAttributeFullName = "DirtyTrackable.AttachAttributeAttribute";
+    private const string TrackableAttributeFullName = "DeltaTrack.TrackableAttribute";
+    private const string TrackableFieldAttributeFullName = "DeltaTrack.TrackableFieldAttribute";
+    private const string AttachAttributeAttributeFullName = "DeltaTrack.AttachAttributeAttribute";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -65,7 +65,7 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
                 Type = f.FieldDeclaration.Declaration.Type.ToString(),
                 TypeSymbol = f.TypeSymbol!,
                 IsCollection = IsCollectionType(f.TypeSymbol!),
-                IsDirtyTrackable = HasTrackableAttribute(f.TypeSymbol!),
+                IsTrackable = HasTrackableAttribute(f.TypeSymbol!),
                 AdditionalAttributes = ExtractAdditionalAttributes(f.FieldSymbol)
             }).ToList()
         };
@@ -144,7 +144,7 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         if (ImplementsIListInterface(namedType))
         {
             var itemType = namedType.TypeArguments[0].ToDisplayString(format);
-            wrapperTypeName = $"global::DirtyTrackable.TrackableList<{itemType}>";
+            wrapperTypeName = $"global::DeltaTrack.TrackableList<{itemType}>";
             interfaceName = $"global::System.Collections.Generic.IList<{itemType}>";
             return true;
         }
@@ -153,7 +153,7 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         {
             var keyType = namedType.TypeArguments[0].ToDisplayString(format);
             var valueType = namedType.TypeArguments[1].ToDisplayString(format);
-            wrapperTypeName = $"global::DirtyTrackable.TrackableDictionary<{keyType}, {valueType}>";
+            wrapperTypeName = $"global::DeltaTrack.TrackableDictionary<{keyType}, {valueType}>";
             interfaceName = $"global::System.Collections.Generic.IDictionary<{keyType}, {valueType}>";
             return true;
         }
@@ -161,7 +161,7 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         if (ImplementsISetInterface(namedType))
         {
             var setType = namedType.TypeArguments[0].ToDisplayString(format);
-            wrapperTypeName = $"global::DirtyTrackable.TrackableSet<{setType}>";
+            wrapperTypeName = $"global::DeltaTrack.TrackableSet<{setType}>";
             interfaceName = $"global::System.Collections.Generic.ISet<{setType}>";
             return true;
         }
@@ -219,10 +219,10 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
             sb.AppendLine("{");
         }
 
-        sb.AppendLine($"    partial class {classInfo.ClassName} : global::DirtyTrackable.IDirtyTrackable");
+        sb.AppendLine($"    partial class {classInfo.ClassName} : global::DeltaTrack.ITrackable");
         sb.AppendLine("    {");
 
-        AppendFieldsAndEvents(sb);
+        AppendTrackerProperty(sb);
         AppendConstructor(sb, classInfo);
         AppendProperties(sb, classInfo);
         AppendOnChangeMethods(sb, classInfo);
@@ -238,15 +238,11 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         context.AddSource($"{classInfo.ClassName}Properties.g.cs", sb.ToString());
     }
 
-    private static void AppendFieldsAndEvents(StringBuilder sb)
-    {
-        sb.AppendLine("        private global::DirtyTrackable.DirtyTracker _dirtyTracker;");
+    private static void AppendTrackerProperty(StringBuilder sb)
+    {        
+        sb.AppendLine("        private global::DeltaTrack.ChangeTracker _changeTracker = new global::DeltaTrack.ChangeTracker();");
         sb.AppendLine();
-        sb.AppendLine("        public bool IsDirty() => _dirtyTracker?.IsDirty() ?? false;");
-        sb.AppendLine();
-        sb.AppendLine("        public global::System.Collections.Generic.IReadOnlyCollection<string> GetDirtyFields() => _dirtyTracker?.GetDirtyFields() ?? global::System.Linq.Enumerable.Empty<string>().ToList().AsReadOnly();");
-        sb.AppendLine();
-        sb.AppendLine("        public event global::System.Action DirtyStateChanged;");
+        sb.AppendLine("        public global::DeltaTrack.IChangeTracker GetChangeTracker() => _changeTracker;");
         sb.AppendLine();
     }
 
@@ -254,7 +250,13 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
     {
         sb.AppendLine($"        public {classInfo.ClassName}()");
         sb.AppendLine("        {");
-        sb.AppendLine("            _dirtyTracker = new global::DirtyTrackable.DirtyTracker(this);");
+        sb.AppendLine("            _changeTracker.ChangeStateClear += MarkClean;");
+        var trackableFields = classInfo.Fields.Where(f => f.IsTrackable);
+        foreach (var field in trackableFields)
+        {
+            var propName = ToPropertyName(field.Name);
+            sb.AppendLine($"            _changeTracker.Subscribe({propName}, On{propName}Changed);");
+        }
         sb.AppendLine("        }");
         sb.AppendLine();
     }
@@ -263,7 +265,7 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
     {
         foreach (var field in classInfo.Fields)
         {
-            if (field.IsDirtyTrackable)
+            if (field.IsTrackable)
             {
                 GenerateTrackingProperty(sb, field);
             }
@@ -314,13 +316,13 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         sb.AppendLine(@"            {");
         sb.AppendLine($@"                if ({fieldName} != null)");
         sb.AppendLine(@"                {");
-        sb.AppendLine($@"                    _dirtyTracker.Unsubscribe({propName}, On{propName}Changed);");
+        sb.AppendLine($@"                    _changeTracker.Unsubscribe({propName}, On{propName}Changed);");
         sb.AppendLine(@"                }");
         sb.AppendLine($@"                {fieldName} = value;");
         sb.AppendLine($@"                On{propName}Changed();");
         sb.AppendLine($@"                if ({fieldName} != null)");
         sb.AppendLine(@"                {");
-        sb.AppendLine($@"                    _dirtyTracker.Subscribe({propName}, On{propName}Changed);");
+        sb.AppendLine($@"                    _changeTracker.Subscribe({propName}, On{propName}Changed);");
         sb.AppendLine(@"                }");
         sb.AppendLine(@"            }");
         sb.AppendLine(@"        }");
@@ -356,7 +358,7 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         sb.AppendLine(@"            {");
         sb.AppendLine($@"                if ({fieldName} != null)");
         sb.AppendLine(@"                {");
-        sb.AppendLine($@"                    _dirtyTracker.Unsubscribe({propName}, On{propName}Changed);");
+        sb.AppendLine($@"                    _changeTracker.Unsubscribe({propName}, On{propName}Changed);");
         sb.AppendLine(@"                }");
         // Handle null safely
         sb.AppendLine($@"                {fieldName} = value == null ? null : new {field.Type}(value);");
@@ -364,7 +366,7 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         sb.AppendLine($@"                On{propName}Changed();");
         sb.AppendLine($@"                if ({fieldName} != null)");
         sb.AppendLine(@"                {");
-        sb.AppendLine($@"                    _dirtyTracker.Subscribe({propName}, On{propName}Changed);");
+        sb.AppendLine($@"                    _changeTracker.Subscribe({propName}, On{propName}Changed);");
         sb.AppendLine(@"                }");
         sb.AppendLine(@"            }");
         sb.AppendLine(@"        }");
@@ -391,56 +393,53 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         foreach (var field in classInfo.Fields)
         {
             var propName = ToPropertyName(field.Name);
-            sb.AppendLine($@"        private void On{propName}Changed() => MarkFieldDirty(nameof({propName}));");
+            sb.AppendLine($@"        private void On{propName}Changed() => MarkFieldChanged(nameof({propName}));");
         }
         sb.AppendLine();
     }
 
     private static void AppendHelperMethods(StringBuilder sb, ClassInfo classInfo)
     {
-        sb.AppendLine("        public void MarkFieldDirty(string field)");
+        sb.AppendLine("        private void MarkFieldChanged(string field)");
         sb.AppendLine("        {");
-        sb.AppendLine("            _dirtyTracker?.MarkFieldDirty(field);");
-        sb.AppendLine("            DirtyStateChanged?.Invoke();");
+        sb.AppendLine("            _changeTracker?.MarkFieldChanged(field);");
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine("        public void MarkClean(bool recursive = false)");
+        sb.AppendLine("        private void MarkClean(bool recursive = false)");
         sb.AppendLine("        {");
-        sb.AppendLine("            _dirtyTracker?.MarkClean();");
-        sb.AppendLine("            ");
         sb.AppendLine("            if (recursive)");
         sb.AppendLine("            {");
         
-        var trackableFields = classInfo.Fields.Where(f => f.IsDirtyTrackable || f.IsCollection);
+        var trackableFields = classInfo.Fields.Where(f => f.IsTrackable || f.IsCollection);
         foreach (var field in trackableFields)
         {
             var propName = ToPropertyName(field.Name);
-            if (field.IsDirtyTrackable)
+            if (field.IsTrackable)
             {
-                sb.AppendLine($@"                if ({propName} is global::DirtyTrackable.IDirtyTrackable trackable_{propName} && trackable_{propName}.IsDirty())");
-                sb.AppendLine($@"                    trackable_{propName}.MarkClean(true);");
+                sb.AppendLine($@"                if ({propName} is global::DeltaTrack.ITrackable trackable_{propName} && trackable_{propName}.GetChangeTracker().IsChanged())");
+                sb.AppendLine($@"                    trackable_{propName}.GetChangeTracker().MarkClean(true);");
             }
             else if (field.IsCollection)
             {
-                if (IsCollectionOfDirtyTrackable(field.TypeSymbol))
+                if (IsCollectionOfTrackable(field.TypeSymbol))
                 {
                     sb.AppendLine($@"                if ({propName} != null)");
                     sb.AppendLine($@"                {{");
                     sb.AppendLine($@"                    foreach (var item in {propName})");
                     sb.AppendLine($@"                    {{");
-                    sb.AppendLine($@"                        if (item is global::DirtyTrackable.IDirtyTrackable trackableItem && trackableItem.IsDirty())");
-                    sb.AppendLine($@"                            trackableItem.MarkClean(true);");
+                    sb.AppendLine($@"                        if (item is global::DeltaTrack.ITrackable trackableItem && trackableItem.GetChangeTracker().IsChanged())");
+                    sb.AppendLine($@"                            trackableItem.GetChangeTracker().MarkClean(true);");
                     sb.AppendLine($@"                    }}");
                     sb.AppendLine($@"                }}");
                 }
-                else if (IsDictionaryWithDirtyTrackableValues(field.TypeSymbol))
+                else if (IsDictionaryWithTrackableValues(field.TypeSymbol))
                 {
                     sb.AppendLine($@"                if ({propName} != null)");
                     sb.AppendLine($@"                {{");
                     sb.AppendLine($@"                    foreach (var kvp in {propName})");
                     sb.AppendLine($@"                    {{");
-                    sb.AppendLine($@"                        if (kvp.Value is global::DirtyTrackable.IDirtyTrackable trackableValue && trackableValue.IsDirty())");
-                    sb.AppendLine($@"                            trackableValue.MarkClean(true);");
+                    sb.AppendLine($@"                        if (kvp.Value is global::DeltaTrack.ITrackable trackableValue && trackableValue.GetChangeTracker().IsChanged())");
+                    sb.AppendLine($@"                            trackableValue.GetChangeTracker().MarkClean(true);");
                     sb.AppendLine($@"                    }}");
                     sb.AppendLine($@"                }}");
                 }
@@ -451,7 +450,7 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         sb.AppendLine("        }");
     }
 
-    private static bool IsCollectionOfDirtyTrackable(ITypeSymbol typeSymbol)
+    private static bool IsCollectionOfTrackable(ITypeSymbol typeSymbol)
     {
         if (typeSymbol is not INamedTypeSymbol namedType) return false;
         
@@ -465,7 +464,7 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         return HasTrackableAttribute(elementType);
     }
 
-    private static bool IsDictionaryWithDirtyTrackableValues(ITypeSymbol typeSymbol)
+    private static bool IsDictionaryWithTrackableValues(ITypeSymbol typeSymbol)
     {
         if (typeSymbol is not INamedTypeSymbol namedType) return false;
         
@@ -529,7 +528,7 @@ public class DirtyPropertyGenerator : IIncrementalGenerator
         public string Type { get; set; } = string.Empty;
         public ITypeSymbol TypeSymbol { get; set; } = null!;
         public bool IsCollection { get; set; }
-        public bool IsDirtyTrackable { get; set; }
+        public bool IsTrackable { get; set; }
         public List<PropertyAttributeInfo> AdditionalAttributes { get; set; } = new();
     }
 

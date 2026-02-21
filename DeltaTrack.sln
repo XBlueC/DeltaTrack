@@ -4,7 +4,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Tests\Tests.csproj
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Analyzers", "Analyzers\Analyzers.csproj", "{ECA67C7D-B81D-4C2F-B67C-7715A009CE33}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DirtyTrackable", "DirtyTrackable\DirtyTrackable.csproj", "{7C1276CE-604B-4055-9014-151C8E481B7F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeltaTrack", "DeltaTrack\DeltaTrack.csproj", "{7C1276CE-604B-4055-9014-151C8E481B7F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

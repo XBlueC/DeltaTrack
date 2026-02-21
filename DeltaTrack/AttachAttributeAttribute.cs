@@ -1,4 +1,4 @@
-﻿namespace DirtyTrackable;
+﻿namespace DeltaTrack;
 
 [AttributeUsage(AttributeTargets.Field, AllowMultiple = true)]
 public sealed class AttachAttributeAttribute : Attribute

@@ -1,27 +1,25 @@
 using System.Collections;
 
-namespace DirtyTrackable;
+namespace DeltaTrack;
 
-public class DirtyTracker(IDirtyTrackable owner)
+public class ChangeTracker : IChangeTracker
 {
-    private readonly IDirtyTrackable _owner = owner;
-
     private readonly HashSet<string> _dirtyFields = new();
-    private readonly Dictionary<IDirtyTrackable, int> _childReferenceCount = new();
+    private readonly Dictionary<ITrackable, int> _childReferenceCount = new();
 
-    #region IDirtyTrackable Implementation
+    public bool IsChanged() => _dirtyFields.Count > 0;
 
-    public bool IsDirty() => _dirtyFields.Count > 0 || HasDirtyChildren();
+    public IReadOnlyCollection<string> GetChangedFields() => _dirtyFields.ToList().AsReadOnly();
 
-    public IReadOnlyCollection<string> GetDirtyFields() => _dirtyFields.ToList().AsReadOnly();
-
-    public void MarkFieldDirty(string field)
+    public void MarkFieldChanged(string field)
     {
         _dirtyFields.Add(field);
+        ChangeStateChanged?.Invoke();
     }
 
     public void MarkClean(bool recursive = false)
     {
+        ChangeStateClear?.Invoke(recursive);
         _dirtyFields.Clear();
 
         if (recursive)
@@ -30,7 +28,10 @@ public class DirtyTracker(IDirtyTrackable owner)
         }
     }
 
-    public void SubscribeChild(IDirtyTrackable child, Action onChange)
+    public event Action ChangeStateChanged;
+    public event Action<bool> ChangeStateClear;
+
+    private void SubscribeChild(ITrackable child, Action onChange)
     {
         if (child == null) return;
 
@@ -41,11 +42,11 @@ public class DirtyTracker(IDirtyTrackable owner)
         else
         {
             _childReferenceCount[child] = 1;
-            child.DirtyStateChanged += onChange;
+            Subscribe(child, onChange);
         }
     }
 
-    public void UnsubscribeChild(IDirtyTrackable child, Action onChange)
+    private void UnsubscribeChild(ITrackable child, Action onChange)
     {
         if (child == null) return;
 
@@ -54,7 +55,7 @@ public class DirtyTracker(IDirtyTrackable owner)
             if (count <= 1)
             {
                 _childReferenceCount.Remove(child);
-                child.DirtyStateChanged -= onChange;
+                Unsubscribe(child, onChange);
             }
             else
             {
@@ -63,30 +64,22 @@ public class DirtyTracker(IDirtyTrackable owner)
         }
     }
 
-    #endregion
-
-    #region Protected Methods
-
-    protected bool HasDirtyChildren()
+    private bool HasDirtyChildren()
     {
-        return _childReferenceCount.Keys.Any(child => child.IsDirty());
+        return _childReferenceCount.Keys.Any(child => child.GetChangeTracker().IsChanged());
     }
 
-    protected void MarkChildrenClean()
+    private void MarkChildrenClean()
     {
         foreach (var child in _childReferenceCount.Keys)
         {
-            child.MarkClean(recursive: true);
+            child.GetChangeTracker().MarkClean(recursive: true);
         }
     }
 
-    #endregion
-
-    #region Collection Helper Methods
-
-    protected internal void HandleItemAdded(object item, Action onChange, string indexPath = null)
+    public void HandleItemAdded(object item, Action onChange, string indexPath = null)
     {
-        if (item is IDirtyTrackable trackable)
+        if (item is ITrackable trackable)
         {
             SubscribeChild(trackable, onChange);
         }
@@ -101,9 +94,9 @@ public class DirtyTracker(IDirtyTrackable owner)
         }
     }
 
-    protected internal void HandleItemRemoved(object item, Action onChange, string indexPath = null)
+    public void HandleItemRemoved(object item, Action onChange, string indexPath = null)
     {
-        if (item is IDirtyTrackable trackable)
+        if (item is ITrackable trackable)
         {
             UnsubscribeChild(trackable, onChange);
         }
@@ -118,15 +111,13 @@ public class DirtyTracker(IDirtyTrackable owner)
         }
     }
 
-    protected internal void InitializeExistingItems(IEnumerable items, Action onChange)
+    public void InitializeExistingItems(IEnumerable items, Action onChange)
     {
         foreach (var item in items)
         {
             HandleItemAdded(item, onChange);
         }
     }
-
-    #endregion
 
     public void Subscribe(object item, Action onChange)
     {
@@ -138,7 +129,7 @@ public class DirtyTracker(IDirtyTrackable owner)
             {
                 foreach (DictionaryEntry entry in dictionary)
                 {
-                    if (entry.Value is IDirtyTrackable trackable)
+                    if (entry.Value is ITrackable trackable)
                     {
                         SubscribeChild(trackable, onChange);
                     }
@@ -150,7 +141,7 @@ public class DirtyTracker(IDirtyTrackable owner)
             {
                 foreach (var element in collection)
                 {
-                    if (element is IDirtyTrackable trackable)
+                    if (element is ITrackable trackable)
                     {
                         SubscribeChild(trackable, onChange);
                     }
@@ -158,9 +149,9 @@ public class DirtyTracker(IDirtyTrackable owner)
 
                 break;
             }
-            case IDirtyTrackable trackable:
+            case ITrackable trackable:
             {
-                trackable.DirtyStateChanged += onChange;
+                trackable.GetChangeTracker().ChangeStateChanged += onChange;
                 break;
             }
         }
@@ -174,7 +165,7 @@ public class DirtyTracker(IDirtyTrackable owner)
             {
                 foreach (DictionaryEntry entry in dictionary)
                 {
-                    if (entry.Value is IDirtyTrackable trackable)
+                    if (entry.Value is ITrackable trackable)
                     {
                         UnsubscribeChild(trackable, onChange);
                     }
@@ -186,7 +177,7 @@ public class DirtyTracker(IDirtyTrackable owner)
             {
                 foreach (var element in collection)
                 {
-                    if (element is IDirtyTrackable trackable)
+                    if (element is ITrackable trackable)
                     {
                         UnsubscribeChild(trackable, onChange);
                     }
@@ -194,9 +185,9 @@ public class DirtyTracker(IDirtyTrackable owner)
 
                 break;
             }
-            case IDirtyTrackable trackable:
+            case ITrackable trackable:
             {
-                trackable.DirtyStateChanged -= onChange;
+                trackable.GetChangeTracker().ChangeStateChanged -= onChange;
                 break;
             }
         }
