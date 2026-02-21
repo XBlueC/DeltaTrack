@@ -4,23 +4,23 @@ namespace DeltaTrack;
 
 public class ChangeTracker : IChangeTracker
 {
-    private readonly HashSet<string> _dirtyFields = new();
+    private readonly HashSet<string> _changedProperties = new();
     private readonly Dictionary<ITrackable, int> _childReferenceCount = new();
 
-    public bool HasChanges() => _dirtyFields.Count > 0;
+    public bool HasChanges() => _changedProperties.Count > 0;
 
-    public IReadOnlyCollection<string> GetChangedFields() => _dirtyFields.ToList().AsReadOnly();
+    public IReadOnlyCollection<string> GetChangedProperties() => _changedProperties.ToList().AsReadOnly();
 
-    public void MarkChanged(string field)
+    public void MarkChanged(string property)
     {
-        _dirtyFields.Add(field);
+        _changedProperties.Add(property);
         OnChanged?.Invoke();
     }
 
     public void MarkClean(bool recursive = false)
     {
         OnClean?.Invoke(recursive);
-        _dirtyFields.Clear();
+        _changedProperties.Clear();
 
         if (recursive)
         {

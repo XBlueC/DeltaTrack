@@ -19,14 +19,14 @@ public class GeneratedPropertiesTests
         
         // Act & Assert
         model.HasChanges().Should().BeFalse();
-        model.GetChangedFields().Should().BeEmpty();
+        model.GetChangedProperties().Should().BeEmpty();
         
         // 测试属性设置
         model.Name = "Test Name";
         
         // Assert
         model.HasChanges().Should().BeTrue();
-        model.GetChangedFields().Should().Contain("Name");
+        model.GetChangedProperties().Should().Contain("Name");
         model.Name.Should().Be("Test Name");
     }
 
@@ -46,7 +46,7 @@ public class GeneratedPropertiesTests
         
         // Assert
         model.HasChanges().Should().BeTrue();
-        model.GetChangedFields().Should().Contain("Name", "Age", "IsActive");
+        model.GetChangedProperties().Should().Contain("Name", "Age", "IsActive");
     }
 
     /// <summary>
@@ -63,7 +63,7 @@ public class GeneratedPropertiesTests
         model.Name = "Initial"; // 设置相同值
         
         // Assert
-        model.GetChangedFields().Should().Contain("Name"); // 第一次设置会标记为脏
+        model.GetChangedProperties().Should().Contain("Name"); // 第一次设置会标记为脏
         // 注意：源生成器使用 EqualityComparer，默认情况下字符串比较是按值比较的
     }
 
@@ -83,7 +83,7 @@ public class GeneratedPropertiesTests
         
         // Assert
         model.HasChanges().Should().BeTrue();
-        model.GetChangedFields().Should().Contain("Age", "BirthDate", "IsActive");
+        model.GetChangedProperties().Should().Contain("Age", "BirthDate", "IsActive");
         model.Age.Should().Be(25);
         model.BirthDate.Should().Be(new DateTime(1995, 1, 1));
         model.IsActive.Should().BeTrue();
@@ -105,7 +105,7 @@ public class GeneratedPropertiesTests
         
         // Assert
         model.HasChanges().Should().BeFalse();
-        model.GetChangedFields().Should().BeEmpty();
+        model.GetChangedProperties().Should().BeEmpty();
     }
 
     /// <summary>
@@ -122,7 +122,7 @@ public class GeneratedPropertiesTests
         
         // Assert
         model.HasChanges().Should().BeTrue();
-        model.GetChangedFields().Should().Contain("CustomField");
+        model.GetChangedProperties().Should().Contain("CustomField");
     }
 
     /// <summary>
@@ -140,7 +140,7 @@ public class GeneratedPropertiesTests
         
         // Assert
         model.HasChanges().Should().BeTrue();
-        model.GetChangedFields().Should().Contain("Tags");
+        model.GetChangedProperties().Should().Contain("Tags");
         model.Tags.Should().Contain("Tag1", "Tag2");
     }
 
@@ -159,7 +159,7 @@ public class GeneratedPropertiesTests
         
         // Assert
         model.HasChanges().Should().BeTrue();
-        model.GetChangedFields().Should().Contain("Metadata");
+        model.GetChangedProperties().Should().Contain("Metadata");
         model.Metadata["Key1"].Should().Be("Value1");
         model.Metadata["Key2"].Should().Be("Value2");
     }
@@ -180,7 +180,7 @@ public class GeneratedPropertiesTests
         
         // Assert
         model.HasChanges().Should().BeTrue();
-        model.GetChangedFields().Should().Contain("Numbers");
+        model.GetChangedProperties().Should().Contain("Numbers");
         model.Numbers.Should().Contain(new[] { 1, 2 });
         model.Numbers.Count.Should().Be(2);
     }
@@ -201,7 +201,7 @@ public class GeneratedPropertiesTests
         
         // Assert
         model.HasChanges().Should().BeTrue();
-        model.GetChangedFields().Should().Contain("Tags", "Metadata", "Numbers");
+        model.GetChangedProperties().Should().Contain("Tags", "Metadata", "Numbers");
     }
 
     /// <summary>
@@ -221,7 +221,7 @@ public class GeneratedPropertiesTests
         
         // Assert
         model.HasChanges().Should().BeTrue();
-        model.GetChangedFields().Should().Contain("Title", "Categories", "PrimaryContact", "Settings");
+        model.GetChangedProperties().Should().Contain("Title", "Categories", "PrimaryContact", "Settings");
         model.Title.Should().Be("Test Title");
         model.Categories.Should().Contain("Category1");
         model.PrimaryContact.Name.Should().Be("Contact Name");
@@ -243,7 +243,7 @@ public class GeneratedPropertiesTests
         
         // Assert
         // 源生成器应该正确处理null值的相等性比较
-        model.GetChangedFields().Should().Contain("Name");
+        model.GetChangedProperties().Should().Contain("Name");
     }
 
     /// <summary>
@@ -263,6 +263,6 @@ public class GeneratedPropertiesTests
         
         // Assert
         model.BirthDate.Should().Be(date2);
-        model.GetChangedFields().Should().Contain("BirthDate");
+        model.GetChangedProperties().Should().Contain("BirthDate");
     }
 }

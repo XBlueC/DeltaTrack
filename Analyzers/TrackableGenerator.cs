@@ -400,9 +400,9 @@ public class TrackableGenerator : IIncrementalGenerator
 
     private static void AppendHelperMethods(StringBuilder sb, ClassInfo classInfo)
     {
-        sb.AppendLine("        private void MarkPropChanged(string field)");
+        sb.AppendLine("        private void MarkPropChanged(string property)");
         sb.AppendLine("        {");
-        sb.AppendLine("            _changeTracker?.MarkChanged(field);");
+        sb.AppendLine("            _changeTracker?.MarkChanged(property);");
         sb.AppendLine("        }");
         sb.AppendLine();
         sb.AppendLine("        private void MarkPropClean(bool recursive = false)");

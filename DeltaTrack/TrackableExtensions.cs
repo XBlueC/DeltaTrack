@@ -9,9 +9,9 @@ public static class TrackableExtensions
             return trackable.GetChangeTracker().HasChanges();
         }
         
-        public IReadOnlyCollection<string> GetChangedFields()
+        public IReadOnlyCollection<string> GetChangedProperties()
         {
-            return trackable.GetChangeTracker().GetChangedFields();
+            return trackable.GetChangeTracker().GetChangedProperties();
         }
         
         public void MarkClean(bool recursive = false)
@@ -19,9 +19,9 @@ public static class TrackableExtensions
             trackable.GetChangeTracker().MarkClean(recursive);
         }
         
-        public void MarkChanged(string field)
+        public void MarkChanged(string property)
         {
-            trackable.GetChangeTracker().MarkChanged(field);
+            trackable.GetChangeTracker().MarkChanged(property);
         }
         
         public IDisposable SubscribeToChanges(Action handler)

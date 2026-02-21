@@ -31,7 +31,7 @@ order.Items.Add("商品A");
 
 // 检查变更状态
 Console.WriteLine(order.HasChanges()); // True
-Console.WriteLine(string.Join(", ", order.GetChangedFields())); // CustomerName, Items
+Console.WriteLine(string.Join(", ", order.GetChangedProperties())); // CustomerName, Items
 ```
 
 ### 2. 全场景覆盖
@@ -84,12 +84,12 @@ Console.WriteLine(order.HasChanges()); // True
 // 集合操作检测
 order.Products.Add("iPhone");
 order.Products.Add("MacBook");
-Console.WriteLine(order.GetChangedFields().Contains("Products")); // True
+Console.WriteLine(order.GetChangedProperties().Contains("Products")); // True
 
 // 嵌套对象检测
 order.Address = new Address { City = "上海" };
 order.Address.Detail = "南京路123号";
-Console.WriteLine(order.GetChangedFields().Contains("Address")); // True
+Console.WriteLine(order.GetChangedProperties().Contains("Address")); // True
 ```
 
 ### 3. 状态管理
@@ -105,7 +105,7 @@ changeTracker.MarkClean(recursive: true);
 
 // 监听变更事件
 changeTracker.OnChanged += () => {
-    Console.WriteLine($"检测到变更: {string.Join(", ", changeTracker.GetChangedFields())}");
+    Console.WriteLine($"检测到变更: {string.Join(", ", changeTracker.GetChangedProperties())}");
 };
 
 // 手动标记字段为脏

@@ -170,10 +170,10 @@ public class EventsAndCleanupTests
         section.HasChanges().Should().BeFalse();
         child.HasChanges().Should().BeFalse();
 
-        model.GetChangedFields().Should().BeEmpty();
-        contact.GetChangedFields().Should().BeEmpty();
-        section.GetChangedFields().Should().BeEmpty();
-        child.GetChangedFields().Should().BeEmpty();
+        model.GetChangedProperties().Should().BeEmpty();
+        contact.GetChangedProperties().Should().BeEmpty();
+        section.GetChangedProperties().Should().BeEmpty();
+        child.GetChangedProperties().Should().BeEmpty();
     }
 
     /// <summary>
@@ -196,7 +196,7 @@ public class EventsAndCleanupTests
         // Assert
         model.HasChanges().Should().BeFalse();
         contact.HasChanges().Should().BeTrue(); // 子对象仍脏
-        contact.GetChangedFields().Should().Contain("Name");
+        contact.GetChangedProperties().Should().Contain("Name");
     }
 
     /// <summary>
@@ -214,7 +214,7 @@ public class EventsAndCleanupTests
 
         // Assert
         model.HasChanges().Should().BeFalse();
-        model.GetChangedFields().Should().BeEmpty();
+        model.GetChangedProperties().Should().BeEmpty();
     }
 
     /// <summary>
@@ -247,8 +247,8 @@ public class EventsAndCleanupTests
         model.MarkChanged("AnotherField");
 
         // Assert
-        model.GetChangedFields().Should().HaveCount(2);
-        model.GetChangedFields().Should().Contain("TestField", "AnotherField");
+        model.GetChangedProperties().Should().HaveCount(2);
+        model.GetChangedProperties().Should().Contain("TestField", "AnotherField");
     }
 
     /// <summary>
