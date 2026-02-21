@@ -1,3 +1,4 @@
+using DeltaTrack;
 using FluentAssertions;
 
 namespace Tests;
@@ -21,10 +22,10 @@ public class NestedObjectTrackingTests
         model.Child.Age = 10;
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("Child");
-        model.Child.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.Child.GetChangeTracker().GetChangedFields().Should().Contain("Name", "Age");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("Child");
+        model.Child.HasChanges().Should().BeTrue();
+        model.Child.GetChangedFields().Should().Contain("Name", "Age");
     }
 
     /// <summary>
@@ -45,15 +46,15 @@ public class NestedObjectTrackingTests
         child2.Age = 5;
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("Children");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("Children");
         model.Children.Should().HaveCount(2);
         
         // 验证子对象的脏状态
-        child1.GetChangeTracker().IsChanged().Should().BeTrue();
-        child1.GetChangeTracker().GetChangedFields().Should().Contain("Name");
-        child2.GetChangeTracker().IsChanged().Should().BeTrue();
-        child2.GetChangeTracker().GetChangedFields().Should().Contain("Age");
+        child1.HasChanges().Should().BeTrue();
+        child1.GetChangedFields().Should().Contain("Name");
+        child2.HasChanges().Should().BeTrue();
+        child2.GetChangedFields().Should().Contain("Age");
     }
 
     /// <summary>
@@ -74,15 +75,15 @@ public class NestedObjectTrackingTests
         child2.IsActive = true;
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("NamedChildren");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("NamedChildren");
         model.NamedChildren.Should().ContainKeys("first", "second");
         
         // 验证子对象的脏状态
-        child1.GetChangeTracker().IsChanged().Should().BeTrue();
-        child1.GetChangeTracker().GetChangedFields().Should().Contain("Name");
-        child2.GetChangeTracker().IsChanged().Should().BeTrue();
-        child2.GetChangeTracker().GetChangedFields().Should().Contain("IsActive");
+        child1.HasChanges().Should().BeTrue();
+        child1.GetChangedFields().Should().Contain("Name");
+        child2.HasChanges().Should().BeTrue();
+        child2.GetChangedFields().Should().Contain("IsActive");
     }
 
     /// <summary>
@@ -104,14 +105,14 @@ public class NestedObjectTrackingTests
         child.Age = 15;
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("Title", "Sections");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("Title", "Sections");
         
-        section.GetChangeTracker().IsChanged().Should().BeTrue();
-        section.GetChangeTracker().GetChangedFields().Should().Contain("Children");
+        section.HasChanges().Should().BeTrue();
+        section.GetChangedFields().Should().Contain("Children");
         
-        child.GetChangeTracker().IsChanged().Should().BeTrue();
-        child.GetChangeTracker().GetChangedFields().Should().Contain("Name", "Age");
+        child.HasChanges().Should().BeTrue();
+        child.GetChangedFields().Should().Contain("Name", "Age");
     }
 
     /// <summary>
@@ -133,13 +134,13 @@ public class NestedObjectTrackingTests
         newChild.Age = 20;
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("Child");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("Child");
         
         // 验证新旧对象的状态
-        oldChild.GetChangeTracker().IsChanged().Should().BeTrue(); // 仍然保持脏状态
-        newChild.GetChangeTracker().IsChanged().Should().BeTrue();
-        newChild.GetChangeTracker().GetChangedFields().Should().Contain("Age");
+        oldChild.HasChanges().Should().BeTrue(); // 仍然保持脏状态
+        newChild.HasChanges().Should().BeTrue();
+        newChild.GetChangedFields().Should().Contain("Age");
     }
 
     /// <summary>
@@ -161,10 +162,10 @@ public class NestedObjectTrackingTests
         child.Age = 25; // 即使移除了也应该还能跟踪
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("Children");
-        child.GetChangeTracker().IsChanged().Should().BeTrue();
-        child.GetChangeTracker().GetChangedFields().Should().Contain("Name", "Age");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("Children");
+        child.HasChanges().Should().BeTrue();
+        child.GetChangedFields().Should().Contain("Name", "Age");
     }
 
     /// <summary>
@@ -183,13 +184,13 @@ public class NestedObjectTrackingTests
         child.Age = 30;
         
         // Act
-        model.GetChangeTracker().MarkClean(recursive: true);
+        model.MarkClean(recursive: true);
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeFalse();
-        model.GetChangeTracker().GetChangedFields().Should().BeEmpty();
-        child.GetChangeTracker().IsChanged().Should().BeFalse();
-        child.GetChangeTracker().GetChangedFields().Should().BeEmpty();
+        model.HasChanges().Should().BeFalse();
+        model.GetChangedFields().Should().BeEmpty();
+        child.HasChanges().Should().BeFalse();
+        child.GetChangedFields().Should().BeEmpty();
     }
 
     /// <summary>
@@ -205,14 +206,14 @@ public class NestedObjectTrackingTests
         child.Name = "Test Child";
         
         // Act
-        model.GetChangeTracker().MarkClean(recursive: false); // 只清理自身
+        model.MarkClean(recursive: false); // 只清理自身
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeFalse();
-        model.GetChangeTracker().GetChangedFields().Should().BeEmpty();
+        model.HasChanges().Should().BeFalse();
+        model.GetChangedFields().Should().BeEmpty();
         // 子对象仍应该是脏的
-        child.GetChangeTracker().IsChanged().Should().BeTrue();
-        child.GetChangeTracker().GetChangedFields().Should().Contain("Name");
+        child.HasChanges().Should().BeTrue();
+        child.GetChangedFields().Should().Contain("Name");
     }
 
     /// <summary>
@@ -235,14 +236,14 @@ public class NestedObjectTrackingTests
         child.Age = 25;
         
         // Assert - 各层级独立跟踪
-        topLevel.GetChangeTracker().IsChanged().Should().BeTrue();
-        topLevel.GetChangeTracker().GetChangedFields().Should().Contain("Title", "Sections");
+        topLevel.HasChanges().Should().BeTrue();
+        topLevel.GetChangedFields().Should().Contain("Title", "Sections");
         
-        section.GetChangeTracker().IsChanged().Should().BeTrue();
-        section.GetChangeTracker().GetChangedFields().Should().Contain("Child", "Children");
+        section.HasChanges().Should().BeTrue();
+        section.GetChangedFields().Should().Contain("Child", "Children");
         
-        child.GetChangeTracker().IsChanged().Should().BeTrue();
-        child.GetChangeTracker().GetChangedFields().Should().Contain("Age");
+        child.HasChanges().Should().BeTrue();
+        child.GetChangedFields().Should().Contain("Age");
     }
 
     /// <summary>
@@ -256,10 +257,10 @@ public class NestedObjectTrackingTests
         var child = new SimpleModel();
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeFalse();
-        model.GetChangeTracker().GetChangedFields().Should().BeEmpty();
-        child.GetChangeTracker().IsChanged().Should().BeFalse();
-        child.GetChangeTracker().GetChangedFields().Should().BeEmpty();
+        model.HasChanges().Should().BeFalse();
+        model.GetChangedFields().Should().BeEmpty();
+        child.HasChanges().Should().BeFalse();
+        child.GetChangedFields().Should().BeEmpty();
     }
 
     /// <summary>
@@ -283,13 +284,13 @@ public class NestedObjectTrackingTests
         model.Categories.Add("Category1");
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("PrimaryContact", "Sections", "Categories");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("PrimaryContact", "Sections", "Categories");
         
-        contact.GetChangeTracker().IsChanged().Should().BeTrue();
-        contact.GetChangeTracker().GetChangedFields().Should().Contain("Name");
+        contact.HasChanges().Should().BeTrue();
+        contact.GetChangedFields().Should().Contain("Name");
         
-        section.GetChangeTracker().IsChanged().Should().BeTrue();
-        section.GetChangeTracker().GetChangedFields().Should().Contain("Child");
+        section.HasChanges().Should().BeTrue();
+        section.GetChangedFields().Should().Contain("Child");
     }
 }

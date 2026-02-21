@@ -2,10 +2,10 @@ namespace DeltaTrack;
 
 public interface IChangeTracker
 {
-    bool IsChanged();
+    bool HasChanges();
     IReadOnlyCollection<string> GetChangedFields();
-    void MarkFieldChanged(string field);
+    void MarkChanged(string field);
     void MarkClean(bool recursive = false);
-    event Action ChangeStateChanged;
-    event Action<bool> ChangeStateClear;
+    event Action OnChanged;
+    event Action<bool> OnClean;
 }

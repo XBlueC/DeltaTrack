@@ -1,3 +1,4 @@
+using DeltaTrack;
 using FluentAssertions;
 
 namespace Tests;
@@ -16,7 +17,7 @@ public class EventsAndCleanupTests
         // Arrange
         var model = new SimpleModel();
         var eventCount = 0;
-        model.GetChangeTracker().ChangeStateChanged += () => eventCount++;
+        model.GetChangeTracker().OnChanged += () => eventCount++;
 
         // Act
         model.Name = "Test Name";
@@ -38,8 +39,8 @@ public class EventsAndCleanupTests
         var eventCount1 = 0;
         var eventCount2 = 0;
 
-        model.GetChangeTracker().ChangeStateChanged += () => eventCount1++;
-        model.GetChangeTracker().ChangeStateChanged += () => eventCount2++;
+        model.GetChangeTracker().OnChanged += () => eventCount1++;
+        model.GetChangeTracker().OnChanged += () => eventCount2++;
 
         // Act
         model.Name = "Test";
@@ -60,11 +61,11 @@ public class EventsAndCleanupTests
         var eventCount = 0;
         Action handler = () => eventCount++;
 
-        model.GetChangeTracker().ChangeStateChanged += handler;
+        model.GetChangeTracker().OnChanged += handler;
         model.Name = "Test1"; // 触发事件
 
         // Act
-        model.GetChangeTracker().ChangeStateChanged -= handler;
+        model.GetChangeTracker().OnChanged -= handler;
         model.Name = "Test2"; // 不应该触发事件
 
         // Assert
@@ -80,7 +81,7 @@ public class EventsAndCleanupTests
         // Arrange
         var model = new CollectionModel();
         var eventCount = 0;
-        model.GetChangeTracker().ChangeStateChanged += () => eventCount++;
+        model.GetChangeTracker().OnChanged += () => eventCount++;
 
         // Act
         model.Tags.Add("Tag1");
@@ -104,8 +105,8 @@ public class EventsAndCleanupTests
         var parentEventCount = 0;
         var childEventCount = 0;
 
-        parent.GetChangeTracker().ChangeStateChanged += () => parentEventCount++;
-        child.GetChangeTracker().ChangeStateChanged += () => childEventCount++;
+        parent.GetChangeTracker().OnChanged += () => parentEventCount++;
+        child.GetChangeTracker().OnChanged += () => childEventCount++;
 
         parent.Child = child;
 
@@ -126,10 +127,10 @@ public class EventsAndCleanupTests
         // Arrange
         var model = new SimpleModel();
         var eventCount = 0;
-        model.GetChangeTracker().ChangeStateChanged += () => eventCount++;
+        model.GetChangeTracker().OnChanged += () => eventCount++;
 
         model.Name = "Initial";
-        model.GetChangeTracker().MarkClean();
+        model.MarkClean();
 
         // Act
         model.Name = "New Value";
@@ -161,18 +162,18 @@ public class EventsAndCleanupTests
         child.Age = 25;
 
         // Act
-        model.GetChangeTracker().MarkClean(recursive: true);
+        model.MarkClean(recursive: true);
 
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeFalse();
-        contact.GetChangeTracker().IsChanged().Should().BeFalse();
-        section.GetChangeTracker().IsChanged().Should().BeFalse();
-        child.GetChangeTracker().IsChanged().Should().BeFalse();
+        model.HasChanges().Should().BeFalse();
+        contact.HasChanges().Should().BeFalse();
+        section.HasChanges().Should().BeFalse();
+        child.HasChanges().Should().BeFalse();
 
-        model.GetChangeTracker().GetChangedFields().Should().BeEmpty();
-        contact.GetChangeTracker().GetChangedFields().Should().BeEmpty();
-        section.GetChangeTracker().GetChangedFields().Should().BeEmpty();
-        child.GetChangeTracker().GetChangedFields().Should().BeEmpty();
+        model.GetChangedFields().Should().BeEmpty();
+        contact.GetChangedFields().Should().BeEmpty();
+        section.GetChangedFields().Should().BeEmpty();
+        child.GetChangedFields().Should().BeEmpty();
     }
 
     /// <summary>
@@ -190,12 +191,12 @@ public class EventsAndCleanupTests
         contact.Name = "Contact";
 
         // Act - 只清理顶层
-        model.GetChangeTracker().MarkClean(recursive: false);
+        model.MarkClean(recursive: false);
 
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeFalse();
-        contact.GetChangeTracker().IsChanged().Should().BeTrue(); // 子对象仍脏
-        contact.GetChangeTracker().GetChangedFields().Should().Contain("Name");
+        model.HasChanges().Should().BeFalse();
+        contact.HasChanges().Should().BeTrue(); // 子对象仍脏
+        contact.GetChangedFields().Should().Contain("Name");
     }
 
     /// <summary>
@@ -209,11 +210,11 @@ public class EventsAndCleanupTests
         // 不对集合进行任何操作，保持空状态
 
         // Act
-        model.GetChangeTracker().MarkClean();
+        model.MarkClean();
 
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeFalse();
-        model.GetChangeTracker().GetChangedFields().Should().BeEmpty();
+        model.HasChanges().Should().BeFalse();
+        model.GetChangedFields().Should().BeEmpty();
     }
 
     /// <summary>
@@ -227,7 +228,7 @@ public class EventsAndCleanupTests
 
         // Act & Assert - 不应该抛出异常
         model.Child = null;
-        var exception = Record.Exception(() => model.GetChangeTracker().IsChanged());
+        var exception = Record.Exception(() => model.HasChanges());
         exception.Should().BeNull();
     }
 
@@ -241,13 +242,13 @@ public class EventsAndCleanupTests
         var model = new SimpleModel();
 
         // Act
-        model.GetChangeTracker().MarkFieldChanged("TestField");
-        model.GetChangeTracker().MarkFieldChanged("TestField"); // 重复标记
-        model.GetChangeTracker().MarkFieldChanged("AnotherField");
+        model.MarkChanged("TestField");
+        model.MarkChanged("TestField"); // 重复标记
+        model.MarkChanged("AnotherField");
 
         // Assert
-        model.GetChangeTracker().GetChangedFields().Should().HaveCount(2);
-        model.GetChangeTracker().GetChangedFields().Should().Contain("TestField", "AnotherField");
+        model.GetChangedFields().Should().HaveCount(2);
+        model.GetChangedFields().Should().Contain("TestField", "AnotherField");
     }
 
     /// <summary>
@@ -261,9 +262,9 @@ public class EventsAndCleanupTests
         var normalHandlerCalled = false;
         var exceptionHandlerCalled = false;
 
-        model.GetChangeTracker().ChangeStateChanged += () => normalHandlerCalled = true;
-        model.GetChangeTracker().ChangeStateChanged += () => throw new InvalidOperationException("Test Exception");
-        model.GetChangeTracker().ChangeStateChanged += () => exceptionHandlerCalled = true;
+        model.GetChangeTracker().OnChanged += () => normalHandlerCalled = true;
+        model.GetChangeTracker().OnChanged += () => throw new InvalidOperationException("Test Exception");
+        model.GetChangeTracker().OnChanged += () => exceptionHandlerCalled = true;
 
         // Act & Assert
         var exception = Record.Exception(() => model.Name = "Test");
@@ -287,16 +288,16 @@ public class EventsAndCleanupTests
         // Arrange
         var model = new SimpleModel();
         var eventCount = 0;
-        model.GetChangeTracker().ChangeStateChanged += () => eventCount++;
+        model.GetChangeTracker().OnChanged += () => eventCount++;
 
         model.Name = "Test";
-        model.GetChangeTracker().MarkClean();
+        model.MarkClean();
 
         // Act
         model.Age = 30; // 清理后再次变脏
 
         // Assert
         eventCount.Should().Be(2); // 第一次设置 + 清理后重新设置
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
+        model.HasChanges().Should().BeTrue();
     }
 }

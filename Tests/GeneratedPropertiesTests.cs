@@ -1,3 +1,4 @@
+using DeltaTrack;
 using FluentAssertions;
 
 namespace Tests;
@@ -17,15 +18,15 @@ public class GeneratedPropertiesTests
         var model = new SimpleModel();
         
         // Act & Assert
-        model.GetChangeTracker().IsChanged().Should().BeFalse();
-        model.GetChangeTracker().GetChangedFields().Should().BeEmpty();
+        model.HasChanges().Should().BeFalse();
+        model.GetChangedFields().Should().BeEmpty();
         
         // 测试属性设置
         model.Name = "Test Name";
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("Name");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("Name");
         model.Name.Should().Be("Test Name");
     }
 
@@ -44,8 +45,8 @@ public class GeneratedPropertiesTests
         model.IsActive = true;
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("Name", "Age", "IsActive");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("Name", "Age", "IsActive");
     }
 
     /// <summary>
@@ -62,7 +63,7 @@ public class GeneratedPropertiesTests
         model.Name = "Initial"; // 设置相同值
         
         // Assert
-        model.GetChangeTracker().GetChangedFields().Should().Contain("Name"); // 第一次设置会标记为脏
+        model.GetChangedFields().Should().Contain("Name"); // 第一次设置会标记为脏
         // 注意：源生成器使用 EqualityComparer，默认情况下字符串比较是按值比较的
     }
 
@@ -81,8 +82,8 @@ public class GeneratedPropertiesTests
         model.IsActive = true;
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("Age", "BirthDate", "IsActive");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("Age", "BirthDate", "IsActive");
         model.Age.Should().Be(25);
         model.BirthDate.Should().Be(new DateTime(1995, 1, 1));
         model.IsActive.Should().BeTrue();
@@ -100,11 +101,11 @@ public class GeneratedPropertiesTests
         model.Age = 30;
         
         // Act
-        model.GetChangeTracker().MarkClean();
+        model.MarkClean();
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeFalse();
-        model.GetChangeTracker().GetChangedFields().Should().BeEmpty();
+        model.HasChanges().Should().BeFalse();
+        model.GetChangedFields().Should().BeEmpty();
     }
 
     /// <summary>
@@ -117,11 +118,11 @@ public class GeneratedPropertiesTests
         var model = new SimpleModel();
         
         // Act
-        model.GetChangeTracker().MarkFieldChanged("CustomField");
+        model.MarkChanged("CustomField");
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("CustomField");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("CustomField");
     }
 
     /// <summary>
@@ -138,8 +139,8 @@ public class GeneratedPropertiesTests
         model.Tags.Add("Tag2");
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("Tags");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("Tags");
         model.Tags.Should().Contain("Tag1", "Tag2");
     }
 
@@ -157,8 +158,8 @@ public class GeneratedPropertiesTests
         model.Metadata["Key2"] = "Value2";
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("Metadata");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("Metadata");
         model.Metadata["Key1"].Should().Be("Value1");
         model.Metadata["Key2"].Should().Be("Value2");
     }
@@ -178,8 +179,8 @@ public class GeneratedPropertiesTests
         model.Numbers.Add(1); // 重复添加
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("Numbers");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("Numbers");
         model.Numbers.Should().Contain(new[] { 1, 2 });
         model.Numbers.Count.Should().Be(2);
     }
@@ -199,8 +200,8 @@ public class GeneratedPropertiesTests
         model.Numbers.Add(1);
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("Tags", "Metadata", "Numbers");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("Tags", "Metadata", "Numbers");
     }
 
     /// <summary>
@@ -219,8 +220,8 @@ public class GeneratedPropertiesTests
         model.Settings["Setting1"] = "Value1";
         
         // Assert
-        model.GetChangeTracker().IsChanged().Should().BeTrue();
-        model.GetChangeTracker().GetChangedFields().Should().Contain("Title", "Categories", "PrimaryContact", "Settings");
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedFields().Should().Contain("Title", "Categories", "PrimaryContact", "Settings");
         model.Title.Should().Be("Test Title");
         model.Categories.Should().Contain("Category1");
         model.PrimaryContact.Name.Should().Be("Contact Name");
@@ -242,7 +243,7 @@ public class GeneratedPropertiesTests
         
         // Assert
         // 源生成器应该正确处理null值的相等性比较
-        model.GetChangeTracker().GetChangedFields().Should().Contain("Name");
+        model.GetChangedFields().Should().Contain("Name");
     }
 
     /// <summary>
@@ -262,6 +263,6 @@ public class GeneratedPropertiesTests
         
         // Assert
         model.BirthDate.Should().Be(date2);
-        model.GetChangeTracker().GetChangedFields().Should().Contain("BirthDate");
+        model.GetChangedFields().Should().Contain("BirthDate");
     }
 }

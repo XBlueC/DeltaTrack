@@ -7,19 +7,19 @@ public class ChangeTracker : IChangeTracker
     private readonly HashSet<string> _dirtyFields = new();
     private readonly Dictionary<ITrackable, int> _childReferenceCount = new();
 
-    public bool IsChanged() => _dirtyFields.Count > 0;
+    public bool HasChanges() => _dirtyFields.Count > 0;
 
     public IReadOnlyCollection<string> GetChangedFields() => _dirtyFields.ToList().AsReadOnly();
 
-    public void MarkFieldChanged(string field)
+    public void MarkChanged(string field)
     {
         _dirtyFields.Add(field);
-        ChangeStateChanged?.Invoke();
+        OnChanged?.Invoke();
     }
 
     public void MarkClean(bool recursive = false)
     {
-        ChangeStateClear?.Invoke(recursive);
+        OnClean?.Invoke(recursive);
         _dirtyFields.Clear();
 
         if (recursive)
@@ -28,8 +28,8 @@ public class ChangeTracker : IChangeTracker
         }
     }
 
-    public event Action ChangeStateChanged;
-    public event Action<bool> ChangeStateClear;
+    public event Action OnChanged;
+    public event Action<bool> OnClean;
 
     private void SubscribeChild(ITrackable child, Action onChange)
     {
@@ -66,7 +66,7 @@ public class ChangeTracker : IChangeTracker
 
     private bool HasDirtyChildren()
     {
-        return _childReferenceCount.Keys.Any(child => child.GetChangeTracker().IsChanged());
+        return _childReferenceCount.Keys.Any(child => child.GetChangeTracker().HasChanges());
     }
 
     private void MarkChildrenClean()
@@ -151,7 +151,7 @@ public class ChangeTracker : IChangeTracker
             }
             case ITrackable trackable:
             {
-                trackable.GetChangeTracker().ChangeStateChanged += onChange;
+                trackable.GetChangeTracker().OnChanged += onChange;
                 break;
             }
         }
@@ -187,7 +187,7 @@ public class ChangeTracker : IChangeTracker
             }
             case ITrackable trackable:
             {
-                trackable.GetChangeTracker().ChangeStateChanged -= onChange;
+                trackable.GetChangeTracker().OnChanged -= onChange;
                 break;
             }
         }
