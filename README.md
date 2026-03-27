@@ -2,6 +2,7 @@
 
 **精准的对象变更检测库** - 自动追踪对象属性变化，零侵入式实现脏数据监控
 
+[![NuGet](https://img.shields.io/nuget/v/DeltaTrack.svg)](https://www.nuget.org/packages/DeltaTrack/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-blue.svg)](https://dotnet.microsoft.com/)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
@@ -54,7 +55,23 @@ Console.WriteLine(string.Join(", ", order.GetChangedProperties())); // CustomerN
 
 ## 🚀 快速上手
 
-### 1. 定义可追踪对象
+### 安装
+
+通过 NuGet 安装：
+
+```bash
+dotnet add package DeltaTrack
+```
+
+或通过 Visual Studio 包管理器控制台：
+
+```powershell
+Install-Package DeltaTrack
+```
+
+[NuGet 包地址](https://www.nuget.org/packages/DeltaTrack/)
+
+### 定义可追踪对象
 ```csharp
 [Trackable]
 public partial class Order
@@ -73,7 +90,7 @@ public partial class Address
 }
 ```
 
-### 2. 实时监控变更
+### 实时监控变更
 ```csharp
 var order = new Order();
 
@@ -92,7 +109,7 @@ order.Address.Detail = "南京路123号";
 Console.WriteLine(order.GetChangedProperties().Contains("Address")); // True
 ```
 
-### 3. 状态管理
+### 状态管理
 ```csharp
 // 获取变更跟踪器
 var changeTracker = order.GetChangeTracker();
