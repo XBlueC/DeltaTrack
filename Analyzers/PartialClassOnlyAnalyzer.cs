@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 
-namespace XAnalyzers;
+namespace DeltaTrack;
 
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class PartialClassOnlyAnalyzer : DiagnosticAnalyzer

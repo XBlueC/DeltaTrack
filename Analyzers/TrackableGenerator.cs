@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using static Microsoft.CodeAnalysis.CSharp.SyntaxKind;
 
-namespace XAnalyzers;
+namespace DeltaTrack;
 
 [Generator]
 public class TrackableGenerator : IIncrementalGenerator
@@ -235,7 +235,16 @@ public class TrackableGenerator : IIncrementalGenerator
             sb.AppendLine("}");
         }
 
-        context.AddSource($"{classInfo.ClassName}Properties.g.cs", sb.ToString());
+        string hintName;
+        if (!string.IsNullOrEmpty(classInfo.Namespace))
+        {
+            hintName = $"{classInfo.Namespace}.{classInfo.ClassName}.Track.g.cs";
+        }
+        else
+        {
+            hintName = $"{classInfo.ClassName}.Track.g.cs";
+        }
+        context.AddSource(hintName, sb.ToString());
     }
 
     private static void AppendTrackerProperty(StringBuilder sb)
