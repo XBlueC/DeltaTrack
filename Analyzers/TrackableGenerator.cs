@@ -13,6 +13,7 @@ public class TrackableGenerator : IIncrementalGenerator
     private const string TrackableAttributeFullName = "DeltaTrack.TrackableAttribute";
     private const string TrackableFieldAttributeFullName = "DeltaTrack.TrackableFieldAttribute";
     private const string AttachAttributeAttributeFullName = "DeltaTrack.AttachAttributeAttribute";
+    private const string TrackIgnoreAttributeFullName = "DeltaTrack.TrackIgnoreAttribute";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -25,12 +26,35 @@ public class TrackableGenerator : IIncrementalGenerator
         context.RegisterSourceOutput(provider, GenerateCode);
     }
 
-    private static bool IsSyntaxTargetForGeneration(SyntaxNode node) =>
-        node is ClassDeclarationSyntax
+    private static bool IsSyntaxTargetForGeneration(SyntaxNode node)
+    {
+        if (node is not ClassDeclarationSyntax classDecl)
+            return false;
+
+        if (!classDecl.Modifiers.Any(m => m.IsKind(PartialKeyword)))
+            return false;
+
+        if (classDecl.AttributeLists.Count > 0)
+            return true;
+
+        foreach (var member in classDecl.Members)
         {
-            AttributeLists.Count: > 0,
-            Modifiers: var mods
-        } && mods.Any(m => m.IsKind(PartialKeyword));
+            if (member is FieldDeclarationSyntax field && field.AttributeLists.Count > 0)
+            {
+                foreach (var attrList in field.AttributeLists)
+                {
+                    foreach (var attr in attrList.Attributes)
+                    {
+                        var name = attr.Name.ToString();
+                        if (name == "TrackableField" || name.EndsWith("TrackableField"))
+                            return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
 
     private static ClassInfo GetClassInfo(GeneratorSyntaxContext context)
     {
@@ -38,12 +62,11 @@ public class TrackableGenerator : IIncrementalGenerator
         var model = context.SemanticModel;
         var typeSymbol = ModelExtensions.GetDeclaredSymbol(model, classDecl);
 
-        if (typeSymbol == null || !HasTrackableAttribute(typeSymbol))
-            return new() { ShouldGenerate = false };
+        var hasClassTrackableAttribute = HasTrackableAttribute(typeSymbol);
 
         var fields = classDecl.Members
             .OfType<FieldDeclarationSyntax>()
-            .Where(HasTrackableFieldAttribute)
+            .Where(f => ShouldTrackField(f, hasClassTrackableAttribute))
             .SelectMany(f => f.Declaration.Variables.Select(v => new
             {
                 Variable = v,
@@ -51,7 +74,7 @@ public class TrackableGenerator : IIncrementalGenerator
                 TypeSymbol = model.GetTypeInfo(f.Declaration.Type).Type,
                 FieldSymbol = (IFieldSymbol)model.GetDeclaredSymbol(v)
             }))
-            .Where(x => x.TypeSymbol != null)
+            .Where(x => x.TypeSymbol != null && !HasTrackIgnoreAttribute(x.FieldSymbol))
             .ToList();
 
         return new()
@@ -69,6 +92,41 @@ public class TrackableGenerator : IIncrementalGenerator
                 AdditionalAttributes = ExtractAdditionalAttributes(f.FieldSymbol)
             }).ToList()
         };
+    }
+
+    private static bool ShouldTrackField(FieldDeclarationSyntax field, bool hasClassTrackableAttribute)
+    {
+        if (HasTrackIgnoreAttributeSyntax(field))
+            return false;
+
+        if (hasClassTrackableAttribute && IsPrivateField(field))
+            return true;
+
+        if (HasTrackableFieldAttribute(field))
+            return true;
+
+        return false;
+    }
+
+    private static bool IsPrivateField(FieldDeclarationSyntax field)
+    {
+        return field.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword));
+    }
+
+    private static bool HasTrackIgnoreAttributeSyntax(FieldDeclarationSyntax field)
+    {
+        return field.AttributeLists
+            .SelectMany(list => list.Attributes)
+            .Any(attr =>
+                attr.Name.ToString() == "TrackIgnore" ||
+                attr.Name.ToString() == TrackIgnoreAttributeFullName ||
+                attr.Name.ToFullString().EndsWith("TrackIgnore"));
+    }
+
+    private static bool HasTrackIgnoreAttribute(IFieldSymbol fieldSymbol)
+    {
+        return fieldSymbol.GetAttributes().Any(attr =>
+            attr.AttributeClass?.ToDisplayString() == TrackIgnoreAttributeFullName);
     }
 
     private static List<PropertyAttributeInfo> ExtractAdditionalAttributes(IFieldSymbol fieldSymbol)

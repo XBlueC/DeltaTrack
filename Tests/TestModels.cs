@@ -15,6 +15,41 @@ public partial class SimpleModel
 }
 
 /// <summary>
+/// 测试不带 TrackableAttribute 但有 TrackableField 的类
+/// </summary>
+public partial class ModelWithoutTrackableAttribute
+{
+    [TrackableField] private string _name = "";
+    [TrackableField] private int _age;
+    [TrackableField] private DateTime _birthDate;
+    [TrackableField] private bool _isActive;
+}
+
+/// <summary>
+/// 测试带 TrackableAttribute 自动追踪私有字段（无需 TrackableField）
+/// </summary>
+[Trackable]
+public partial class AutoTrackModel
+{
+    private string _autoName = "";
+    private int _autoAge;
+    private DateTime _autoBirthDate;
+    [TrackIgnore] private string _ignoredField = "";
+    private bool _autoIsActive;
+}
+
+/// <summary>
+/// 测试 TrackIgnoreAttribute 排除字段追踪
+/// </summary>
+[Trackable]
+public partial class ModelWithIgnore
+{
+    private string _trackedField = "";
+    [TrackIgnore] private string _ignoredField = "";
+    [TrackIgnore] private int _ignoredNumber;
+}
+
+/// <summary>
 /// 测试用的集合模型类 - 包含各种可跟踪集合
 /// </summary>
 [Trackable]

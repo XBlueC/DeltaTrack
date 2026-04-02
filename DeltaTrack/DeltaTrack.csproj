@@ -13,10 +13,10 @@
         <RepositoryUrl>https://github.com/XBlueC/DeltaTrack</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <PackageReadmeFile>README.md</PackageReadmeFile>
+<!--        <PackageReadmeFile>README.md</PackageReadmeFile>-->
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="DeltaTrack.Analyzers" Version="1.0.2" />
-        <None Include="../README.md" Pack="true" PackagePath="\"/>
+        <PackageReference Include="DeltaTrack.Analyzers" Version="1.0.3" />
+<!--        <None Include="../README.md" Pack="true" PackagePath="\"/>-->
     </ItemGroup>
 </Project>

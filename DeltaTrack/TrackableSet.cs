@@ -11,6 +11,8 @@ public class TrackableSet<T> : ISet<T>
     public TrackableSet(Action onChanged)
         : this(onChanged, new HashSet<T>())
     {
+        _onChanged = onChanged ?? throw new ArgumentNullException(nameof(onChanged));
+        _tracker = new ChangeTracker();
     }
 
     public TrackableSet(Action onChanged, ISet<T> inner)

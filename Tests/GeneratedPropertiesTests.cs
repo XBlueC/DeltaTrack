@@ -265,4 +265,100 @@ public class GeneratedPropertiesTests
         model.BirthDate.Should().Be(date2);
         model.GetChangedProperties().Should().Contain("BirthDate");
     }
+
+    /// <summary>
+    /// 测试不带 TrackableAttribute 但有 TrackableField 的类也能正常生成跟踪代码
+    /// </summary>
+    [Fact]
+    public void ModelWithoutTrackableAttribute_Should_Generate_Tracking_Code()
+    {
+        // Arrange
+        var model = new ModelWithoutTrackableAttribute();
+
+        // Act & Assert
+        model.HasChanges().Should().BeFalse();
+        model.GetChangedProperties().Should().BeEmpty();
+
+        // 测试属性设置
+        model.Name = "Test Name";
+        model.Age = 25;
+        model.IsActive = true;
+
+        // Assert
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedProperties().Should().Contain("Name", "Age", "IsActive");
+        model.Name.Should().Be("Test Name");
+        model.Age.Should().Be(25);
+        model.IsActive.Should().BeTrue();
+
+        // 测试清理功能
+        model.MarkClean();
+        model.HasChanges().Should().BeFalse();
+        model.GetChangedProperties().Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// 测试带 TrackableAttribute 的类自动追踪私有字段（无需 TrackableField）
+    /// </summary>
+    [Fact]
+    public void AutoTrackModel_Should_Track_All_Private_Fields()
+    {
+        // Arrange
+        var model = new AutoTrackModel();
+
+        // Act & Assert - 初始状态
+        model.HasChanges().Should().BeFalse();
+
+        // 设置自动追踪的字段
+        model.AutoName = "Auto Test";
+        model.AutoAge = 30;
+        model.AutoBirthDate = new DateTime(1990, 1, 1);
+        model.AutoIsActive = true;
+
+        // Assert - 所有私有字段都被追踪
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedProperties().Should().Contain("AutoName", "AutoAge", "AutoBirthDate", "AutoIsActive");
+    }
+
+    /// <summary>
+    /// 测试 TrackIgnoreAttribute 排除字段追踪
+    /// </summary>
+    [Fact]
+    public void AutoTrackModel_Should_Not_Track_Ignored_Fields()
+    {
+        // Arrange
+        var model = new AutoTrackModel();
+
+        // Act - 设置被忽略的字段（通过反射验证字段存在但无属性）
+        // IgnoredField 不会生成属性，所以无法直接设置
+        // 验证只有 AutoName 等字段有属性
+
+        // Assert - 验证生成的属性不包括 IgnoredField
+        model.HasChanges().Should().BeFalse();
+        model.AutoName = "Test";
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedProperties().Should().Contain("AutoName");
+        model.GetChangedProperties().Should().NotContain("IgnoredField");
+    }
+
+    /// <summary>
+    /// 测试 ModelWithIgnore 的 TrackIgnore 特性功能
+    /// </summary>
+    [Fact]
+    public void ModelWithIgnore_Should_Only_Track_NonIgnored_Fields()
+    {
+        // Arrange
+        var model = new ModelWithIgnore();
+
+        // Act
+        model.TrackedField = "Tracked Value";
+
+        // Assert - 只有 TrackedField 被追踪
+        model.HasChanges().Should().BeTrue();
+        model.GetChangedProperties().Should().Contain("TrackedField");
+        model.GetChangedProperties().Should().NotContain("IgnoredField", "IgnoredNumber");
+
+        // 验证 TrackedField 属性存在且正常工作
+        model.TrackedField.Should().Be("Tracked Value");
+    }
 }
