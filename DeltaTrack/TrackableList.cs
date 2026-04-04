@@ -7,10 +7,8 @@ public class TrackableList<T> : Collection<T> where T : notnull
     private readonly ChangeTracker _tracker;
     private readonly Action _onChanged;
 
-    public TrackableList(Action onChanged) : base(new List<T>())
+    public TrackableList(Action onChanged) : this(onChanged, new List<T>())
     {
-        _onChanged = onChanged ?? throw new ArgumentNullException(nameof(onChanged));
-        _tracker = new ChangeTracker();
     }
 
     public TrackableList(Action onChanged, IList<T> initialItems) : base(initialItems)

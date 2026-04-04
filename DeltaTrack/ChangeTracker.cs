@@ -5,11 +5,12 @@ namespace DeltaTrack;
 public class ChangeTracker : IChangeTracker
 {
     private readonly HashSet<string> _changedProperties = new();
-    private readonly Dictionary<ITrackable, int> _childReferenceCount = new();
+    private readonly Dictionary<ITrackable, (int Count, Action OnChange)> _childSubscriptions = new();
+    private bool _disposed;
 
     public bool HasChanges() => _changedProperties.Count > 0;
 
-    public IReadOnlyCollection<string> GetChangedProperties() => _changedProperties.ToList().AsReadOnly();
+    public IReadOnlyCollection<string> GetChangedProperties() => _changedProperties;
 
     public void MarkChanged(string property)
     {
@@ -33,45 +34,50 @@ public class ChangeTracker : IChangeTracker
 
     private void SubscribeChild(ITrackable child, Action onChange)
     {
-        if (child == null) return;
+        if (child == null || _disposed) return;
 
-        if (_childReferenceCount.TryGetValue(child, out var count))
+        if (_childSubscriptions.TryGetValue(child, out var existing))
         {
-            _childReferenceCount[child] = count + 1;
+            _childSubscriptions[child] = (existing.Count + 1, existing.OnChange);
         }
         else
         {
-            _childReferenceCount[child] = 1;
-            Subscribe(child, onChange);
+            _childSubscriptions[child] = (1, onChange);
+            child.GetChangeTracker().OnChanged += onChange;
         }
     }
 
     private void UnsubscribeChild(ITrackable child, Action onChange)
     {
-        if (child == null) return;
+        if (child == null || _disposed) return;
 
-        if (_childReferenceCount.TryGetValue(child, out var count))
+        if (_childSubscriptions.TryGetValue(child, out var existing))
         {
-            if (count <= 1)
+            if (existing.Count <= 1)
             {
-                _childReferenceCount.Remove(child);
-                Unsubscribe(child, onChange);
+                _childSubscriptions.Remove(child);
+                child.GetChangeTracker().OnChanged -= existing.OnChange;
             }
             else
             {
-                _childReferenceCount[child] = count - 1;
+                _childSubscriptions[child] = (existing.Count - 1, existing.OnChange);
             }
         }
     }
 
     private bool HasDirtyChildren()
     {
-        return _childReferenceCount.Keys.Any(child => child.GetChangeTracker().HasChanges());
+        foreach (var child in _childSubscriptions.Keys)
+        {
+            if (child.GetChangeTracker().HasChanges())
+                return true;
+        }
+        return false;
     }
 
     private void MarkChildrenClean()
     {
-        foreach (var child in _childReferenceCount.Keys)
+        foreach (var child in _childSubscriptions.Keys)
         {
             child.GetChangeTracker().MarkClean(recursive: true);
         }
@@ -126,70 +132,65 @@ public class ChangeTracker : IChangeTracker
         switch (item)
         {
             case IDictionary dictionary:
-            {
                 foreach (DictionaryEntry entry in dictionary)
-                {
-                    if (entry.Value is ITrackable trackable)
-                    {
-                        SubscribeChild(trackable, onChange);
-                    }
-                }
-
+                    SubscribeItem(entry.Value, onChange);
                 break;
-            }
             case ICollection collection:
-            {
                 foreach (var element in collection)
-                {
-                    if (element is ITrackable trackable)
-                    {
-                        SubscribeChild(trackable, onChange);
-                    }
-                }
-
+                    SubscribeItem(element, onChange);
                 break;
-            }
             case ITrackable trackable:
-            {
                 trackable.GetChangeTracker().OnChanged += onChange;
                 break;
-            }
         }
     }
 
     public void Unsubscribe(object item, Action onChange)
     {
+        if (item == null) return;
+
         switch (item)
         {
             case IDictionary dictionary:
-            {
                 foreach (DictionaryEntry entry in dictionary)
-                {
-                    if (entry.Value is ITrackable trackable)
-                    {
-                        UnsubscribeChild(trackable, onChange);
-                    }
-                }
-
+                    UnsubscribeItem(entry.Value, onChange);
                 break;
-            }
             case ICollection collection:
-            {
                 foreach (var element in collection)
-                {
-                    if (element is ITrackable trackable)
-                    {
-                        UnsubscribeChild(trackable, onChange);
-                    }
-                }
-
+                    UnsubscribeItem(element, onChange);
                 break;
-            }
             case ITrackable trackable:
-            {
                 trackable.GetChangeTracker().OnChanged -= onChange;
                 break;
-            }
         }
+    }
+
+    private void SubscribeItem(object item, Action onChange)
+    {
+        if (item is ITrackable trackable)
+            SubscribeChild(trackable, onChange);
+    }
+
+    private void UnsubscribeItem(object item, Action onChange)
+    {
+        if (item is ITrackable trackable)
+            UnsubscribeChild(trackable, onChange);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        foreach (var entry in _childSubscriptions)
+        {
+            entry.Key.GetChangeTracker().OnChanged -= entry.Value.OnChange;
+        }
+
+        _childSubscriptions.Clear();
+        _changedProperties.Clear();
+
+        OnChanged = null;
+        OnClean = null;
     }
 }

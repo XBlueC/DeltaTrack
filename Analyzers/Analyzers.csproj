@@ -9,6 +9,7 @@
         <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
         <LangVersion>default</LangVersion>
         <RootNamespace>DeltaTrack</RootNamespace>
+        <NoWarn>RS1038</NoWarn>
 
         <PackageId>DeltaTrack.Analyzers</PackageId>
         <Version>1.0.3</Version>
@@ -27,6 +28,7 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.14.0" />
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+        <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="4.14.0" />
     </ItemGroup>
 
     <ItemGroup>

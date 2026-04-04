@@ -8,31 +8,31 @@ public static class TrackableExtensions
         {
             return trackable.GetChangeTracker().HasChanges();
         }
-        
+
         public IReadOnlyCollection<string> GetChangedProperties()
         {
             return trackable.GetChangeTracker().GetChangedProperties();
         }
-        
+
         public void MarkClean(bool recursive = false)
         {
             trackable.GetChangeTracker().MarkClean(recursive);
         }
-        
+
         public void MarkChanged(string property)
         {
             trackable.GetChangeTracker().MarkChanged(property);
         }
-        
+
         public IDisposable SubscribeToChanges(Action handler)
         {
             var tracker = trackable.GetChangeTracker();
             tracker.OnChanged += handler;
-        
+
             return new ChangeSubscription(tracker, handler);
         }
     }
-    
+
     private class ChangeSubscription(IChangeTracker tracker, Action handler) : IDisposable
     {
         private bool _disposed;

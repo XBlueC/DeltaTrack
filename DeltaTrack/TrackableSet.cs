@@ -8,11 +8,8 @@ public class TrackableSet<T> : ISet<T>
     private readonly Action _onChanged;
     private readonly ChangeTracker _tracker;
 
-    public TrackableSet(Action onChanged)
-        : this(onChanged, new HashSet<T>())
+    public TrackableSet(Action onChanged) : this(onChanged, new HashSet<T>())
     {
-        _onChanged = onChanged ?? throw new ArgumentNullException(nameof(onChanged));
-        _tracker = new ChangeTracker();
     }
 
     public TrackableSet(Action onChanged, ISet<T> inner)
@@ -181,6 +178,7 @@ public class TrackableSet<T> : ISet<T>
             _tracker.HandleItemAdded(item, _onChanged);
             changed = true;
         }
+
         if (changed) _onChanged();
     }
 

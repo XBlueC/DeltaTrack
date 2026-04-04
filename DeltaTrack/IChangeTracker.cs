@@ -1,6 +1,6 @@
 namespace DeltaTrack;
 
-public interface IChangeTracker
+public interface IChangeTracker : IDisposable
 {
     bool HasChanges();
     IReadOnlyCollection<string> GetChangedProperties();

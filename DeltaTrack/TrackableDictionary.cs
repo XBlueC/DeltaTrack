@@ -11,8 +11,6 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>
 
     public TrackableDictionary(Action onChanged) : this(onChanged, new Dictionary<TKey, TValue>())
     {
-        _onChanged = onChanged ?? throw new ArgumentNullException(nameof(onChanged));
-        _tracker = new ChangeTracker();
     }
 
     public TrackableDictionary(Action onChanged, IDictionary<TKey, TValue> inner)

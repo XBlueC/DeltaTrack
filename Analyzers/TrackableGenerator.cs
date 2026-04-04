@@ -85,7 +85,7 @@ public class TrackableGenerator : IIncrementalGenerator
             Fields = fields.Select(f => new FieldInfo
             {
                 Name = f.Variable.Identifier.Text,
-                Type = f.FieldDeclaration.Declaration.Type.ToString(),
+                Type = f.TypeSymbol.ToDisplayString(),
                 TypeSymbol = f.TypeSymbol!,
                 IsCollection = IsCollectionType(f.TypeSymbol!),
                 IsTrackable = HasTrackableAttribute(f.TypeSymbol!),
@@ -185,8 +185,8 @@ public class TrackableGenerator : IIncrementalGenerator
 
     private static bool IsCollectionType(ITypeSymbol typeSymbol)
     {
-        return typeSymbol.AllInterfaces.Any(i => 
-            i.Name == "ICollection" && 
+        return typeSymbol.AllInterfaces.Any(i =>
+            i.Name == "ICollection" &&
             i.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic");
     }
 
@@ -215,7 +215,7 @@ public class TrackableGenerator : IIncrementalGenerator
             interfaceName = $"global::System.Collections.Generic.IDictionary<{keyType}, {valueType}>";
             return true;
         }
-        
+
         if (ImplementsISetInterface(namedType))
         {
             var setType = namedType.TypeArguments[0].ToDisplayString(format);
@@ -234,36 +234,62 @@ public class TrackableGenerator : IIncrementalGenerator
     private static bool HasTrackableFieldAttribute(FieldDeclarationSyntax field) =>
         field.AttributeLists
             .SelectMany(list => list.Attributes)
-            .Any(attr => 
+            .Any(attr =>
                 attr.Name.ToString() == "TrackableField" ||
                 attr.Name.ToString() == TrackableFieldAttributeFullName ||
                 attr.Name.ToFullString().EndsWith("TrackableField"));
 
     private static bool ImplementsIListInterface(INamedTypeSymbol typeSymbol)
     {
-        return typeSymbol.AllInterfaces.Any(i => 
-            i.Name == "IList" && 
+        if (typeSymbol.AllInterfaces.Any(i =>
+                i.Name == "ISet" &&
+                i.IsGenericType &&
+                i.TypeArguments.Length == 1))
+        {
+            return false;
+        }
+
+        var ienumerableT = typeSymbol.AllInterfaces.FirstOrDefault(i =>
+            i.Name == "IEnumerable" &&
             i.IsGenericType &&
-            i.TypeArguments.Length == 1 &&
-            i.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic");
+            i.TypeArguments.Length == 1);
+
+        if (ienumerableT == null) return false;
+
+        return typeSymbol.GetMembers("Add")
+            .OfType<IMethodSymbol>()
+            .Any(m => m.Parameters.Length == 1 &&
+                      m.Parameters[0].Type.Equals(ienumerableT.TypeArguments[0], SymbolEqualityComparer.Default));
     }
 
     private static bool ImplementsIDictionaryInterface(INamedTypeSymbol typeSymbol)
     {
-        return typeSymbol.AllInterfaces.Any(i => 
-            i.Name == "IDictionary" && 
+        // 检查是否实现 IEnumerable<KeyValuePair<TKey, TValue>>
+        return typeSymbol.AllInterfaces.Any(i =>
+            i.Name == "IEnumerable" &&
             i.IsGenericType &&
-            i.TypeArguments.Length == 2 &&
-            i.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic");
+            i.TypeArguments.Length == 1 &&
+            i.TypeArguments[0] is INamedTypeSymbol constructed &&
+            constructed.Name == "KeyValuePair" &&
+            constructed.IsGenericType &&
+            constructed.TypeArguments.Length == 2);
     }
 
     private static bool ImplementsISetInterface(INamedTypeSymbol typeSymbol)
     {
-        return typeSymbol.AllInterfaces.Any(i => 
-            i.Name == "ISet" && 
+        if (ImplementsIListInterface(typeSymbol)) return false;
+
+        var ienumerableT = typeSymbol.AllInterfaces.FirstOrDefault(i =>
+            i.Name == "IEnumerable" &&
             i.IsGenericType &&
-            i.TypeArguments.Length == 1 &&
-            i.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic");
+            i.TypeArguments.Length == 1);
+
+        if (ienumerableT == null) return false;
+
+        return typeSymbol.GetMembers("Add")
+            .OfType<IMethodSymbol>()
+            .Any(m => m.Parameters.Length == 1 &&
+                      m.Parameters[0].Type.Equals(ienumerableT.TypeArguments[0], SymbolEqualityComparer.Default));
     }
 
     private static void GenerateCode(SourceProductionContext context, ClassInfo classInfo)
@@ -302,11 +328,12 @@ public class TrackableGenerator : IIncrementalGenerator
         {
             hintName = $"{classInfo.ClassName}.Track.g.cs";
         }
+
         context.AddSource(hintName, sb.ToString());
     }
 
     private static void AppendTrackerProperty(StringBuilder sb)
-    {        
+    {
         sb.AppendLine("        private global::DeltaTrack.ChangeTracker _changeTracker = new global::DeltaTrack.ChangeTracker();");
         sb.AppendLine();
         sb.AppendLine("        public global::DeltaTrack.IChangeTracker GetChangeTracker() => _changeTracker;");
@@ -324,6 +351,7 @@ public class TrackableGenerator : IIncrementalGenerator
             var propName = ToPropertyName(field.Name);
             sb.AppendLine($"            _changeTracker.Subscribe({propName}, On{propName}Changed);");
         }
+
         sb.AppendLine("        }");
         sb.AppendLine();
     }
@@ -344,6 +372,7 @@ public class TrackableGenerator : IIncrementalGenerator
             {
                 GenerateSimpleProperty(sb, field);
             }
+
             sb.AppendLine();
         }
     }
@@ -462,6 +491,7 @@ public class TrackableGenerator : IIncrementalGenerator
             var propName = ToPropertyName(field.Name);
             sb.AppendLine($@"        private void On{propName}Changed() => MarkPropChanged(nameof({propName}));");
         }
+
         sb.AppendLine();
     }
 
@@ -476,7 +506,7 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine("        {");
         sb.AppendLine("            if (recursive)");
         sb.AppendLine("            {");
-        
+
         var trackableFields = classInfo.Fields.Where(f => f.IsTrackable || f.IsCollection);
         foreach (var field in trackableFields)
         {
@@ -512,7 +542,7 @@ public class TrackableGenerator : IIncrementalGenerator
                 }
             }
         }
-        
+
         sb.AppendLine("            }");
         sb.AppendLine("        }");
     }
@@ -520,13 +550,11 @@ public class TrackableGenerator : IIncrementalGenerator
     private static bool IsCollectionOfTrackable(ITypeSymbol typeSymbol)
     {
         if (typeSymbol is not INamedTypeSymbol namedType) return false;
-        
-        var constructedFrom = namedType.ConstructedFrom.ToDisplayString();
-        if (constructedFrom != "System.Collections.Generic.List<T>" && 
-            constructedFrom != "System.Collections.Generic.HashSet<T>") return false;
-            
+
+        if (!ImplementsIListInterface(namedType)) return false;
+
         if (namedType.TypeArguments.Length == 0) return false;
-        
+
         var elementType = namedType.TypeArguments[0];
         return HasTrackableAttribute(elementType);
     }
@@ -534,12 +562,11 @@ public class TrackableGenerator : IIncrementalGenerator
     private static bool IsDictionaryWithTrackableValues(ITypeSymbol typeSymbol)
     {
         if (typeSymbol is not INamedTypeSymbol namedType) return false;
-        
-        var constructedFrom = namedType.ConstructedFrom.ToDisplayString();
-        if (constructedFrom != "System.Collections.Generic.Dictionary<TKey, TValue>") return false;
-            
+
+        if (!ImplementsIDictionaryInterface(namedType)) return false;
+
         if (namedType.TypeArguments.Length < 2) return false;
-        
+
         var valueType = namedType.TypeArguments[1];
         return HasTrackableAttribute(valueType);
     }
@@ -562,6 +589,7 @@ public class TrackableGenerator : IIncrementalGenerator
                 if (member.ConstantValue?.Equals(arg.Value) == true)
                     return $"{enumFullName}.{member.Name}";
             }
+
             return $"{enumFullName}.{arg.Value}";
         }
 
