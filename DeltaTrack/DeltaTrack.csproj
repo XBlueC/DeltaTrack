@@ -5,19 +5,22 @@
         <Nullable>disable</Nullable>
         <RootNamespace>DeltaTrack</RootNamespace>
         <PackageId>DeltaTrack</PackageId>
-        <Version>1.0.3</Version>
+        <Version>1.0.6</Version>
         <Authors>XBlueC</Authors>
-        <Description>DeltaTrack - Precise object change detection library. Automatic property tracking and zero-intrusive dirty data monitoring. 精准的对象变更检测库，自动追踪对象属性变化，零侵入式实现脏数据监控。</Description>
+        <Description>Precise object change detection library - Generates code at compile time using Roslyn, automatically tracks property changes with zero intrusion, supports nested objects and collection monitoring.</Description>
         <PackageProjectUrl>https://github.com/XBlueC/DeltaTrack</PackageProjectUrl>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <Copyright>Copyright 2026 XBlueC</Copyright>
+        <PackageTags>change-tracking;dirty-data;roslyn;source-generator;state-tracking</PackageTags>
         <RepositoryUrl>https://github.com/XBlueC/DeltaTrack</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <LangVersion>default</LangVersion>
-        <!--        <PackageReadmeFile>README.md</PackageReadmeFile>-->
+        <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="DeltaTrack.Analyzers" Version="1.0.3"/>
-        <!--        <None Include="../README.md" Pack="true" PackagePath="\"/>-->
+        <None Include="../README.md" Pack="true" PackagePath="\"/>
+        <ProjectReference Include="..\Analyzers\Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
+        <None Include="..\Analyzers\bin\$(Configuration)\netstandard2.0\Analyzers.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false"/>
     </ItemGroup>
 </Project>
