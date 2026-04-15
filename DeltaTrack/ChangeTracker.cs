@@ -8,6 +8,8 @@ public class ChangeTracker : IChangeTracker
     private readonly Dictionary<ITrackable, (int Count, Action OnChange)> _childSubscriptions = new();
     private bool _disposed;
 
+    public ChangeTracker(Action onInit = null) => onInit?.Invoke();
+
     public bool HasChanges() => _changedProperties.Count > 0;
 
     public IReadOnlyCollection<string> GetChangedProperties() => _changedProperties;

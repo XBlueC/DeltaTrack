@@ -306,8 +306,7 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine($"    partial class {classInfo.ClassName} : global::DeltaTrack.ITrackable");
         sb.AppendLine("    {");
 
-        AppendTrackerProperty(sb);
-        AppendConstructor(sb, classInfo);
+        AppendTrackerProperty(sb, classInfo);
         AppendProperties(sb, classInfo);
         AppendOnChangeMethods(sb, classInfo);
         AppendHelperMethods(sb, classInfo);
@@ -332,27 +331,46 @@ public class TrackableGenerator : IIncrementalGenerator
         context.AddSource(hintName, sb.ToString());
     }
 
-    private static void AppendTrackerProperty(StringBuilder sb)
+    private static void AppendTrackerProperty(StringBuilder sb, ClassInfo classInfo)
     {
-        sb.AppendLine("        private global::DeltaTrack.ChangeTracker _changeTracker = new global::DeltaTrack.ChangeTracker();");
-        sb.AppendLine();
-        sb.AppendLine("        public global::DeltaTrack.IChangeTracker GetChangeTracker() => _changeTracker;");
-        sb.AppendLine();
-    }
+        var trackableFields = classInfo.Fields.Where(f => f.IsTrackable).ToList();
 
-    private static void AppendConstructor(StringBuilder sb, ClassInfo classInfo)
-    {
-        sb.AppendLine($"        public {classInfo.ClassName}()");
+        sb.AppendLine("        private global::DeltaTrack.ChangeTracker? _tracker;");
+        sb.AppendLine();
+        sb.AppendLine("        private global::DeltaTrack.ChangeTracker GetTracker()");
         sb.AppendLine("        {");
-        sb.AppendLine("            _changeTracker.OnClean += MarkPropClean;");
-        var trackableFields = classInfo.Fields.Where(f => f.IsTrackable);
+        sb.AppendLine("            return _tracker ??= CreateTracker();");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        private void EnsureTracker()");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (_tracker == null)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                _tracker = new global::DeltaTrack.ChangeTracker();");
+        sb.AppendLine("                _tracker.OnClean += MarkPropClean;");
         foreach (var field in trackableFields)
         {
             var propName = ToPropertyName(field.Name);
-            sb.AppendLine($"            _changeTracker.Subscribe({propName}, On{propName}Changed);");
+            sb.AppendLine($"                if ({field.Name} != null) _tracker.Subscribe({propName}, On{propName}Changed);");
         }
 
+        sb.AppendLine("            }");
         sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        private global::DeltaTrack.ChangeTracker CreateTracker()");
+        sb.AppendLine("        {");
+        sb.AppendLine("            var tracker = new global::DeltaTrack.ChangeTracker();");
+        sb.AppendLine("            tracker.OnClean += MarkPropClean;");
+        foreach (var field in trackableFields)
+        {
+            var propName = ToPropertyName(field.Name);
+            sb.AppendLine($"            tracker.Subscribe({propName}, On{propName}Changed);");
+        }
+
+        sb.AppendLine("            return tracker;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        public global::DeltaTrack.IChangeTracker GetChangeTracker() => GetTracker();");
         sb.AppendLine();
     }
 
@@ -391,6 +409,7 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine(@"            {");
         sb.AppendLine($@"                if (!global::System.Collections.Generic.EqualityComparer<{fieldType}>.Default.Equals({fieldName}, value))");
         sb.AppendLine(@"                {");
+        sb.AppendLine($@"                    GetTracker();");
         sb.AppendLine($@"                    {fieldName} = value;");
         sb.AppendLine($@"                    On{propName}Changed();");
         sb.AppendLine(@"                }");
@@ -407,18 +426,19 @@ public class TrackableGenerator : IIncrementalGenerator
         AppendAddedAttributes(sb, field);
         sb.AppendLine($@"        public {fieldType} {propName}");
         sb.AppendLine(@"        {");
-        sb.AppendLine($@"            get => {fieldName};");
+        sb.AppendLine($@"            get {{ EnsureTracker(); return {fieldName}; }}");
         sb.AppendLine(@"            set");
         sb.AppendLine(@"            {");
+        sb.AppendLine($@"                GetTracker();");
         sb.AppendLine($@"                if ({fieldName} != null)");
         sb.AppendLine(@"                {");
-        sb.AppendLine($@"                    _changeTracker.Unsubscribe({propName}, On{propName}Changed);");
+        sb.AppendLine($@"                    _tracker!.Unsubscribe({propName}, On{propName}Changed);");
         sb.AppendLine(@"                }");
         sb.AppendLine($@"                {fieldName} = value;");
         sb.AppendLine($@"                On{propName}Changed();");
         sb.AppendLine($@"                if ({fieldName} != null)");
         sb.AppendLine(@"                {");
-        sb.AppendLine($@"                    _changeTracker.Subscribe({propName}, On{propName}Changed);");
+        sb.AppendLine($@"                    _tracker!.Subscribe({propName}, On{propName}Changed);");
         sb.AppendLine(@"                }");
         sb.AppendLine(@"            }");
         sb.AppendLine(@"        }");
@@ -445,6 +465,7 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine(@"        {");
         sb.AppendLine(@"            get");
         sb.AppendLine(@"            {");
+        sb.AppendLine(@"                GetTracker();");
         sb.AppendLine($@"                if ({wrapperFieldName} != null) return {wrapperFieldName};");
         sb.AppendLine($@"                {fieldName} ??= new {field.Type}();");
         sb.AppendLine($@"                {wrapperFieldName} ??= new {wrapperType}(On{propName}Changed, {fieldName});");
@@ -454,7 +475,7 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine(@"            {");
         sb.AppendLine($@"                if ({fieldName} != null)");
         sb.AppendLine(@"                {");
-        sb.AppendLine($@"                    _changeTracker.Unsubscribe({propName}, On{propName}Changed);");
+        sb.AppendLine($@"                    GetTracker().Unsubscribe({propName}, On{propName}Changed);");
         sb.AppendLine(@"                }");
         // Handle null safely
         sb.AppendLine($@"                {fieldName} = value == null ? null : new {field.Type}(value);");
@@ -462,7 +483,7 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine($@"                On{propName}Changed();");
         sb.AppendLine($@"                if ({fieldName} != null)");
         sb.AppendLine(@"                {");
-        sb.AppendLine($@"                    _changeTracker.Subscribe({propName}, On{propName}Changed);");
+        sb.AppendLine($@"                    GetTracker().Subscribe({propName}, On{propName}Changed);");
         sb.AppendLine(@"                }");
         sb.AppendLine(@"            }");
         sb.AppendLine(@"        }");
@@ -499,51 +520,55 @@ public class TrackableGenerator : IIncrementalGenerator
     {
         sb.AppendLine("        private void MarkPropChanged(string property)");
         sb.AppendLine("        {");
-        sb.AppendLine("            _changeTracker?.MarkChanged(property);");
+        sb.AppendLine("            GetTracker().MarkChanged(property);");
         sb.AppendLine("        }");
         sb.AppendLine();
         sb.AppendLine("        private void MarkPropClean(bool recursive = false)");
         sb.AppendLine("        {");
-        sb.AppendLine("            if (recursive)");
-        sb.AppendLine("            {");
 
-        var trackableFields = classInfo.Fields.Where(f => f.IsTrackable || f.IsCollection);
-        foreach (var field in trackableFields)
+        var trackableFields = classInfo.Fields.Where(f => f.IsTrackable || f.IsCollection).ToList();
+        if (trackableFields.Count > 0)
         {
-            var propName = ToPropertyName(field.Name);
-            if (field.IsTrackable)
+            sb.AppendLine("            if (recursive)");
+            sb.AppendLine("            {");
+            foreach (var field in trackableFields)
             {
-                sb.AppendLine($@"                if ({propName} is global::DeltaTrack.ITrackable trackable_{propName} && trackable_{propName}.GetChangeTracker().HasChanges())");
-                sb.AppendLine($@"                    trackable_{propName}.GetChangeTracker().MarkClean(true);");
-            }
-            else if (field.IsCollection)
-            {
-                if (IsCollectionOfTrackable(field.TypeSymbol))
+                var propName = ToPropertyName(field.Name);
+                if (field.IsTrackable)
                 {
-                    sb.AppendLine($@"                if ({propName} != null)");
-                    sb.AppendLine($@"                {{");
-                    sb.AppendLine($@"                    foreach (var item in {propName})");
-                    sb.AppendLine($@"                    {{");
-                    sb.AppendLine($@"                        if (item is global::DeltaTrack.ITrackable trackableItem && trackableItem.GetChangeTracker().HasChanges())");
-                    sb.AppendLine($@"                            trackableItem.GetChangeTracker().MarkClean(true);");
-                    sb.AppendLine($@"                    }}");
-                    sb.AppendLine($@"                }}");
+                    sb.AppendLine($@"                if ({propName} is global::DeltaTrack.ITrackable trackable_{propName} && trackable_{propName}.GetChangeTracker().HasChanges())");
+                    sb.AppendLine($@"                    trackable_{propName}.GetChangeTracker().MarkClean(true);");
                 }
-                else if (IsDictionaryWithTrackableValues(field.TypeSymbol))
+                else if (field.IsCollection)
                 {
-                    sb.AppendLine($@"                if ({propName} != null)");
-                    sb.AppendLine($@"                {{");
-                    sb.AppendLine($@"                    foreach (var kvp in {propName})");
-                    sb.AppendLine($@"                    {{");
-                    sb.AppendLine($@"                        if (kvp.Value is global::DeltaTrack.ITrackable trackableValue && trackableValue.GetChangeTracker().HasChanges())");
-                    sb.AppendLine($@"                            trackableValue.GetChangeTracker().MarkClean(true);");
-                    sb.AppendLine($@"                    }}");
-                    sb.AppendLine($@"                }}");
+                    if (IsCollectionOfTrackable(field.TypeSymbol))
+                    {
+                        sb.AppendLine($@"                if ({propName} != null)");
+                        sb.AppendLine($@"                {{");
+                        sb.AppendLine($@"                    foreach (var item in {propName})");
+                        sb.AppendLine($@"                    {{");
+                        sb.AppendLine($@"                        if (item is global::DeltaTrack.ITrackable trackableItem && trackableItem.GetChangeTracker().HasChanges())");
+                        sb.AppendLine($@"                            trackableItem.GetChangeTracker().MarkClean(true);");
+                        sb.AppendLine($@"                    }}");
+                        sb.AppendLine($@"                }}");
+                    }
+                    else if (IsDictionaryWithTrackableValues(field.TypeSymbol))
+                    {
+                        sb.AppendLine($@"                if ({propName} != null)");
+                        sb.AppendLine($@"                {{");
+                        sb.AppendLine($@"                    foreach (var kvp in {propName})");
+                        sb.AppendLine($@"                    {{");
+                        sb.AppendLine($@"                        if (kvp.Value is global::DeltaTrack.ITrackable trackableValue && trackableValue.GetChangeTracker().HasChanges())");
+                        sb.AppendLine($@"                            trackableValue.GetChangeTracker().MarkClean(true);");
+                        sb.AppendLine($@"                    }}");
+                        sb.AppendLine($@"                }}");
+                    }
                 }
             }
+
+            sb.AppendLine("            }");
         }
 
-        sb.AppendLine("            }");
         sb.AppendLine("        }");
     }
 
@@ -615,6 +640,7 @@ public class TrackableGenerator : IIncrementalGenerator
         public string Namespace { get; set; } = string.Empty;
         public string ClassName { get; set; } = string.Empty;
         public List<FieldInfo> Fields { get; set; } = new();
+        public bool HasParameterlessConstructor { get; set; }
     }
 
     private record FieldInfo
