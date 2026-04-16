@@ -1,6 +1,3 @@
-using DeltaTrack;
-using FluentAssertions;
-
 namespace Tests;
 
 /// <summary>
@@ -22,10 +19,11 @@ public class NestedObjectTrackingTests
         model.Child.Age = 10;
         
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("Child");
-        model.Child.HasChanges().Should().BeTrue();
-        model.Child.GetChangedProperties().Should().Contain("Name", "Age");
+        Assert.True(model.HasChanges());
+        Assert.Contains("Child", model.GetChangedProperties());
+        Assert.True(model.Child.HasChanges());
+        Assert.Contains("Name", model.Child.GetChangedProperties());
+        Assert.Contains("Age", model.Child.GetChangedProperties());
     }
 
     /// <summary>
@@ -46,15 +44,15 @@ public class NestedObjectTrackingTests
         child2.Age = 5;
         
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("Children");
-        model.Children.Should().HaveCount(2);
+        Assert.True(model.HasChanges());
+        Assert.Contains("Children", model.GetChangedProperties());
+        Assert.Equal(2, model.Children.Count);
         
         // 验证子对象的脏状态
-        child1.HasChanges().Should().BeTrue();
-        child1.GetChangedProperties().Should().Contain("Name");
-        child2.HasChanges().Should().BeTrue();
-        child2.GetChangedProperties().Should().Contain("Age");
+        Assert.True(child1.HasChanges());
+        Assert.Contains("Name", child1.GetChangedProperties());
+        Assert.True(child2.HasChanges());
+        Assert.Contains("Age", child2.GetChangedProperties());
     }
 
     /// <summary>
@@ -75,15 +73,16 @@ public class NestedObjectTrackingTests
         child2.IsActive = true;
         
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("NamedChildren");
-        model.NamedChildren.Should().ContainKeys("first", "second");
+        Assert.True(model.HasChanges());
+        Assert.Contains("NamedChildren", model.GetChangedProperties());
+        Assert.True(model.NamedChildren.ContainsKey("first"));
+        Assert.True(model.NamedChildren.ContainsKey("second"));
         
         // 验证子对象的脏状态
-        child1.HasChanges().Should().BeTrue();
-        child1.GetChangedProperties().Should().Contain("Name");
-        child2.HasChanges().Should().BeTrue();
-        child2.GetChangedProperties().Should().Contain("IsActive");
+        Assert.True(child1.HasChanges());
+        Assert.Contains("Name", child1.GetChangedProperties());
+        Assert.True(child2.HasChanges());
+        Assert.Contains("IsActive", child2.GetChangedProperties());
     }
 
     /// <summary>
@@ -105,14 +104,16 @@ public class NestedObjectTrackingTests
         child.Age = 15;
         
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("Title", "Sections");
+        Assert.True(model.HasChanges());
+        Assert.Contains("Title", model.GetChangedProperties());
+        Assert.Contains("Sections", model.GetChangedProperties());
         
-        section.HasChanges().Should().BeTrue();
-        section.GetChangedProperties().Should().Contain("Children");
+        Assert.True(section.HasChanges());
+        Assert.Contains("Children", section.GetChangedProperties());
         
-        child.HasChanges().Should().BeTrue();
-        child.GetChangedProperties().Should().Contain("Name", "Age");
+        Assert.True(child.HasChanges());
+        Assert.Contains("Name", child.GetChangedProperties());
+        Assert.Contains("Age", child.GetChangedProperties());
     }
 
     /// <summary>
@@ -134,13 +135,13 @@ public class NestedObjectTrackingTests
         newChild.Age = 20;
         
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("Child");
+        Assert.True(model.HasChanges());
+        Assert.Contains("Child", model.GetChangedProperties());
         
         // 验证新旧对象的状态
-        oldChild.HasChanges().Should().BeTrue(); // 仍然保持脏状态
-        newChild.HasChanges().Should().BeTrue();
-        newChild.GetChangedProperties().Should().Contain("Age");
+        Assert.True(oldChild.HasChanges()); // 仍然保持脏状态
+        Assert.True(newChild.HasChanges());
+        Assert.Contains("Age", newChild.GetChangedProperties());
     }
 
     /// <summary>
@@ -162,10 +163,11 @@ public class NestedObjectTrackingTests
         child.Age = 25; // 即使移除了也应该还能跟踪
         
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("Children");
-        child.HasChanges().Should().BeTrue();
-        child.GetChangedProperties().Should().Contain("Name", "Age");
+        Assert.True(model.HasChanges());
+        Assert.Contains("Children", model.GetChangedProperties());
+        Assert.True(child.HasChanges());
+        Assert.Contains("Name", child.GetChangedProperties());
+        Assert.Contains("Age", child.GetChangedProperties());
     }
 
     /// <summary>
@@ -187,10 +189,10 @@ public class NestedObjectTrackingTests
         model.MarkClean(recursive: true);
         
         // Assert
-        model.HasChanges().Should().BeFalse();
-        model.GetChangedProperties().Should().BeEmpty();
-        child.HasChanges().Should().BeFalse();
-        child.GetChangedProperties().Should().BeEmpty();
+        Assert.False(model.HasChanges());
+        Assert.Empty(model.GetChangedProperties());
+        Assert.False(child.HasChanges());
+        Assert.Empty(child.GetChangedProperties());
     }
 
     /// <summary>
@@ -209,11 +211,11 @@ public class NestedObjectTrackingTests
         model.MarkClean(recursive: false); // 只清理自身
         
         // Assert
-        model.HasChanges().Should().BeFalse();
-        model.GetChangedProperties().Should().BeEmpty();
+        Assert.False(model.HasChanges());
+        Assert.Empty(model.GetChangedProperties());
         // 子对象仍应该是脏的
-        child.HasChanges().Should().BeTrue();
-        child.GetChangedProperties().Should().Contain("Name");
+        Assert.True(child.HasChanges());
+        Assert.Contains("Name", child.GetChangedProperties());
     }
 
     /// <summary>
@@ -236,14 +238,16 @@ public class NestedObjectTrackingTests
         child.Age = 25;
         
         // Assert - 各层级独立跟踪
-        topLevel.HasChanges().Should().BeTrue();
-        topLevel.GetChangedProperties().Should().Contain("Title", "Sections");
+        Assert.True(topLevel.HasChanges());
+        Assert.Contains("Title", topLevel.GetChangedProperties());
+        Assert.Contains("Sections", topLevel.GetChangedProperties());
         
-        section.HasChanges().Should().BeTrue();
-        section.GetChangedProperties().Should().Contain("Child", "Children");
+        Assert.True(section.HasChanges());
+        Assert.Contains("Child", section.GetChangedProperties());
+        Assert.Contains("Children", section.GetChangedProperties());
         
-        child.HasChanges().Should().BeTrue();
-        child.GetChangedProperties().Should().Contain("Age");
+        Assert.True(child.HasChanges());
+        Assert.Contains("Age", child.GetChangedProperties());
     }
 
     /// <summary>
@@ -257,10 +261,10 @@ public class NestedObjectTrackingTests
         var child = new SimpleModel();
         
         // Assert
-        model.HasChanges().Should().BeFalse();
-        model.GetChangedProperties().Should().BeEmpty();
-        child.HasChanges().Should().BeFalse();
-        child.GetChangedProperties().Should().BeEmpty();
+        Assert.False(model.HasChanges());
+        Assert.Empty(model.GetChangedProperties());
+        Assert.False(child.HasChanges());
+        Assert.Empty(child.GetChangedProperties());
     }
 
     /// <summary>
@@ -284,13 +288,15 @@ public class NestedObjectTrackingTests
         model.Categories.Add("Category1");
         
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("PrimaryContact", "Sections", "Categories");
+        Assert.True(model.HasChanges());
+        Assert.Contains("PrimaryContact", model.GetChangedProperties());
+        Assert.Contains("Sections", model.GetChangedProperties());
+        Assert.Contains("Categories", model.GetChangedProperties());
         
-        contact.HasChanges().Should().BeTrue();
-        contact.GetChangedProperties().Should().Contain("Name");
+        Assert.True(contact.HasChanges());
+        Assert.Contains("Name", contact.GetChangedProperties());
         
-        section.HasChanges().Should().BeTrue();
-        section.GetChangedProperties().Should().Contain("Child");
+        Assert.True(section.HasChanges());
+        Assert.Contains("Child", section.GetChangedProperties());
     }
 }

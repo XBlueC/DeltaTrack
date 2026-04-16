@@ -10,10 +10,12 @@ Precise object change detection library - Automatically tracks property changes 
 ## Overview
 
 DeltaTrack solves the pain points of object state change detection:
+
 - **Automatic Tracking**: Just add `[Trackable]` or `[TrackableField]` attributes
 - **Smart Detection**: Automatically captures all changes including property assignments, collection add/remove/modify
 - **Hierarchical Tracking**: Supports deep change detection for nested objects and complex collections
 - **Real-time Feedback**: Provides changed field list and change events
+- **Zero GC Pressure**: Uses bitflag (`long`) instead of `HashSet<string>` for dirty marking, ideal for high-frequency scenarios like game servers
 
 ## Installation
 
@@ -72,8 +74,30 @@ order.HasChanges();                              // True
 // Get list of changed properties
 order.GetChangedProperties();                    // ["CustomerName"]
 
+// Type-safe dirty flag check
+order.GetDirtyFlags();                           // Order.DirtyFlag.CustomerName
+
 // Clear change records
 order.MarkClean();
+```
+
+### Type-Safe Dirty Flag API
+
+The generator creates a `[Flags] enum DirtyFlag : long` for each trackable class, enabling type-safe bit operations:
+
+```csharp
+// Mark specific fields as changed using type-safe flags
+order.MarkChanged(Order.DirtyFlag.CustomerName | Order.DirtyFlag.Amount);
+
+// Check specific dirty flags
+var flags = order.GetDirtyFlags();
+if (flags.HasFlag(Order.DirtyFlag.CustomerName))
+{
+    // Handle customer name change
+}
+
+// String-based marking is also supported
+order.MarkChanged("CustomerName");
 ```
 
 ### Nested Object Tracking
@@ -102,12 +126,11 @@ using var subscription = order.SubscribeToChanges(() =>
 // subscription.Dispose() automatically unsubscribes
 ```
 
-Or access ChangeTracker directly:
+Or subscribe to the event directly:
 
 ```csharp
-var tracker = order.GetChangeTracker();
-tracker.OnChanged += () => Console.WriteLine("Changed!");
-tracker.OnClean += (recursive) => Console.WriteLine($"Cleaned (recursive: {recursive})");
+order.OnChanged += () => Console.WriteLine("Changed!");
+order.OnChanged -= handler;  // Manual unsubscribe
 ```
 
 ## Attributes
@@ -127,9 +150,12 @@ public partial class MyClass
 ```
 
 Generated code includes:
-- `GetChangeTracker()` method returning `IChangeTracker`
+
+- `ITrackable` interface implementation (`HasChanges()`, `GetChangedProperties()`, `MarkClean()`, `event OnChanged`)
+- `[Flags] enum DirtyFlag : long` with one flag per tracked field
 - Property getter/setter for each private field
-- Automatic `MarkChanged()` call in setter
+- Automatic `OnXxxChanged()` call in setter using bitflag operations
+- `GetDirtyFlags()`, `MarkChanged(DirtyFlag)`, `MarkChanged(string)` helper methods
 
 ### `[TrackableField]`
 
@@ -213,21 +239,12 @@ DeltaTrack provides three trackable collections that automatically monitor eleme
 Based on `Collection<T>`, tracks all list operations:
 
 ```csharp
-var list = new TrackableList<Product>(() => tracker.MarkChanged("Products"));
-
 list.Add(item);            // Triggers change
 list.Insert(0, item);      // Triggers change
 list[0] = newItem;         // Triggers change (SetItem)
 list.RemoveAt(0);          // Triggers change
 list.Remove(item);         // Triggers change
 list.Clear();              // Triggers change
-```
-
-Initialize with existing elements:
-
-```csharp
-var initialItems = new List<Product> { p1, p2 };
-var list = new TrackableList<Product>(onChange, initialItems);
 ```
 
 If elements are `ITrackable`, automatically subscribes to their change events.
@@ -237,8 +254,6 @@ If elements are `ITrackable`, automatically subscribes to their change events.
 Implements `IDictionary<TKey, TValue>`, tracks all dictionary operations:
 
 ```csharp
-var dict = new TrackableDictionary<string, Product>(() => onChange());
-
 dict["key"] = value;       // Triggers change (Add or Set)
 dict.Add(key, value);      // Triggers change
 dict.Remove(key);          // Triggers change
@@ -249,20 +264,11 @@ dict.ContainsKey(key);
 dict.TryGetValue(key, out var value);
 ```
 
-Initialize with existing elements:
-
-```csharp
-var existing = new Dictionary<string, Product> { ["k1"] = p1 };
-var dict = new TrackableDictionary<string, Product>(onChange, existing);
-```
-
 ### TrackableSet\<T\>
 
 Implements `ISet<T>`, tracks all set operations:
 
 ```csharp
-var set = new TrackableSet<string>(() => onChange());
-
 set.Add(item);             // Triggers change (only when actually added)
 set.Remove(item);          // Triggers change (only when actually removed)
 set.Clear();               // Triggers change
@@ -284,56 +290,57 @@ set.IsSubsetOf(other);
 `ITrackable` elements in collections are automatically tracked:
 
 ```csharp
-var list = new TrackableList<Address>(() => tracker.MarkChanged("Addresses"));
 var addr = new Address();
-list.Add(addr);
+order.Addresses.Add(addr);
 
 addr.City = "Beijing";        // Triggers collection's onChange (change propagates up)
 
-list.Remove(addr);         // Automatically unsubscribes from addr
+order.Addresses.Remove(addr); // Automatically unsubscribes from addr
 ```
 
 ## API Reference
 
-### IChangeTracker Interface
-
-```csharp
-public interface IChangeTracker
-{
-    bool HasChanges();                              // Whether there are changes
-    IReadOnlyCollection<string> GetChangedProperties(); // List of changed properties
-    void MarkChanged(string property);              // Manually mark as changed
-    void MarkClean(bool recursive = false);         // Clear change records
-
-    event Action OnChanged;                         // Triggered when changed
-    event Action<bool> OnClean;                     // Triggered when cleaned
-}
-```
-
 ### ITrackable Interface
+
+The sole public contract for consumers. All generated trackable classes implement this interface:
 
 ```csharp
 public interface ITrackable
 {
-    IChangeTracker GetChangeTracker();              // Get change tracker
+    bool HasChanges();                              // Whether there are changes
+    IReadOnlyList<string> GetChangedProperties();   // List of changed properties
+    void MarkClean(bool recursive = false);         // Clear change records
+    event Action OnChanged;                         // Triggered when changed
 }
 ```
 
-### ITrackable Extension Methods
+### Generated Per-Class API
+
+In addition to `ITrackable`, the generator produces these members on each trackable class:
 
 ```csharp
-// Check changes
-bool HasChanges()
+// Type-safe dirty flag enum
+[Flags]
+public enum DirtyFlag : long
+{
+    Name = 1L << 0,
+    Age  = 1L << 1,
+    // ... one flag per tracked field
+}
 
-// Get changed properties list
-IReadOnlyCollection<string> GetChangedProperties()
+// Get current dirty flags
+DirtyFlag GetDirtyFlags();
 
-// Clear change records
-void MarkClean(bool recursive = false)
+// Mark fields as changed using type-safe flags
+void MarkChanged(DirtyFlag flags);
 
-// Manually mark as changed
-void MarkChanged(string property)
+// Mark field as changed by name
+void MarkChanged(string propertyName);
+```
 
+### Extension Methods
+
+```csharp
 // Subscribe to change events, returns IDisposable
 IDisposable SubscribeToChanges(Action handler)
 ```
@@ -341,53 +348,48 @@ IDisposable SubscribeToChanges(Action handler)
 Example:
 
 ```csharp
-// Using extension methods
+// Direct interface usage
 order.HasChanges();
 order.GetChangedProperties();
-order.MarkChanged("CustomField");
 order.MarkClean(recursive: true);
+order.OnChanged += () => Console.WriteLine("Changed!");
 
 // Using subscription (recommended, auto manages lifecycle)
 using var sub = order.SubscribeToChanges(() => Console.WriteLine("Changed!"));
 ```
 
-### ChangeTracker Internal Mechanism
+## Analyzer Diagnostics
 
-`ChangeTracker` implements intelligent nested object management:
+DeltaTrack includes compile-time analyzers to catch issues early:
 
-- **Reference Counting**: When same nested object is referenced in multiple places, subscribes only once, counting prevents duplicate subscriptions
-- **Automatic Propagation**: Nested object's `OnChanged` event triggers parent object's change
-- **Recursive Cleanup**: `MarkClean(true)` recursively cleans all subscribed nested objects
-
-```csharp
-// Internal API (usually no need to call directly)
-tracker.HandleItemAdded(item, onChange);           // Handle item addition
-tracker.HandleItemRemoved(item, onChange);         // Handle item removal
-tracker.InitializeExistingItems(items, onChange);  // Initialize existing items
-tracker.Subscribe(item, onChange);                 // Subscribe to object changes
-tracker.Unsubscribe(item, onChange);               // Unsubscribe
-```
+| Code    | Severity | Description                                        |
+|---------|----------|----------------------------------------------------|
+| TRACK001 | Error   | Trackable class must be declared as `partial`       |
+| TRACK002 | Error   | `[TrackableField]` must be on a private field       |
+| TRACK003 | Error   | Trackable class exceeds 64 tracked fields (bitflag limit) |
 
 ## Use Cases
 
-| Scenario | Usage |
-|----------|-------|
-| Data Sync | Only sync fields returned by `GetChangedProperties()` |
-| Form Validation | Real-time monitoring of user input changes, trigger validation |
-| Cache Invalidation | Auto refresh cache when objects change |
-| Audit Logging | Record changed fields from `GetChangedProperties()` |
-| Database Updates | Only update fields with changes, reduce IO |
-| UI Binding | `SubscribeToChanges()` to notify UI refresh |
-| Distributed Systems | Precisely propagate changes to other nodes |
+| Scenario            | Usage                                                          |
+|---------------------|----------------------------------------------------------------|
+| Data Sync           | Only sync fields returned by `GetChangedProperties()`          |
+| Form Validation     | Real-time monitoring of user input changes, trigger validation |
+| Cache Invalidation  | Auto refresh cache when objects change                         |
+| Audit Logging       | Record changed fields from `GetChangedProperties()`            |
+| Database Updates    | Only update fields with changes, reduce IO                     |
+| UI Binding          | `SubscribeToChanges()` to notify UI refresh                    |
+| Distributed Systems | Precisely propagate changes to other nodes                     |
 
 ## Technical Features
 
 - **Compile-time Generation** - Based on Roslyn Source Generator, no runtime overhead
 - **Zero Intrusion** - Only add attributes, no business code modification
 - **Zero Reflection** - Generated code calls directly, excellent performance
+- **Zero GC Dirty Tracking** - Uses `long` bitflag instead of `HashSet<string>`, no allocations on change
+- **Type-Safe Flags** - Generated `[Flags] enum DirtyFlag : long` per class for compile-time checked operations
 - **Smart Reference Counting** - Correctly manages subscriptions when same object referenced multiple places, prevents memory leaks
 - **Nested Tracking** - Auto-tracks nested objects and trackable elements in collections
-- **Type Safe** - Strongly typed API, compile-time checking
+- **Compile-time Diagnostics** - Analyzer catches common mistakes (non-partial class, >64 fields, etc.)
 
 ## License
 

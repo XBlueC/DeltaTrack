@@ -1,6 +1,3 @@
-using DeltaTrack;
-using FluentAssertions;
-
 namespace Tests;
 
 /// <summary>
@@ -18,16 +15,16 @@ public class GeneratedPropertiesTests
         var model = new SimpleModel();
         
         // Act & Assert
-        model.HasChanges().Should().BeFalse();
-        model.GetChangedProperties().Should().BeEmpty();
+        Assert.False(model.HasChanges());
+        Assert.Empty(model.GetChangedProperties());
         
         // 测试属性设置
         model.Name = "Test Name";
         
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("Name");
-        model.Name.Should().Be("Test Name");
+        Assert.True(model.HasChanges());
+        Assert.Contains("Name", model.GetChangedProperties());
+        Assert.Equal("Test Name", model.Name);
     }
 
     /// <summary>
@@ -45,8 +42,10 @@ public class GeneratedPropertiesTests
         model.IsActive = true;
         
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("Name", "Age", "IsActive");
+        Assert.True(model.HasChanges());
+        Assert.Contains("Name", model.GetChangedProperties());
+        Assert.Contains("Age", model.GetChangedProperties());
+        Assert.Contains("IsActive", model.GetChangedProperties());
     }
 
     /// <summary>
@@ -63,7 +62,7 @@ public class GeneratedPropertiesTests
         model.Name = "Initial"; // 设置相同值
         
         // Assert
-        model.GetChangedProperties().Should().Contain("Name"); // 第一次设置会标记为脏
+        Assert.Contains("Name", model.GetChangedProperties()); // 第一次设置会标记为脏
         // 注意：源生成器使用 EqualityComparer，默认情况下字符串比较是按值比较的
     }
 
@@ -82,11 +81,13 @@ public class GeneratedPropertiesTests
         model.IsActive = true;
         
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("Age", "BirthDate", "IsActive");
-        model.Age.Should().Be(25);
-        model.BirthDate.Should().Be(new DateTime(1995, 1, 1));
-        model.IsActive.Should().BeTrue();
+        Assert.True(model.HasChanges());
+        Assert.Contains("Age", model.GetChangedProperties());
+        Assert.Contains("BirthDate", model.GetChangedProperties());
+        Assert.Contains("IsActive", model.GetChangedProperties());
+        Assert.Equal(25, model.Age);
+        Assert.Equal(new DateTime(1995, 1, 1), model.BirthDate);
+        Assert.True(model.IsActive);
     }
 
     /// <summary>
@@ -104,8 +105,8 @@ public class GeneratedPropertiesTests
         model.MarkClean();
         
         // Assert
-        model.HasChanges().Should().BeFalse();
-        model.GetChangedProperties().Should().BeEmpty();
+        Assert.False(model.HasChanges());
+        Assert.Empty(model.GetChangedProperties());
     }
 
     /// <summary>
@@ -121,8 +122,8 @@ public class GeneratedPropertiesTests
         model.MarkChanged("Name");
     
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("Name");
+        Assert.True(model.HasChanges());
+        Assert.Contains("Name", model.GetChangedProperties());
     }
     
     /// <summary>
@@ -138,10 +139,11 @@ public class GeneratedPropertiesTests
         model.MarkChanged(SimpleModel.DirtyFlag.Name | SimpleModel.DirtyFlag.Age);
     
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetDirtyFlags().Should().HaveFlag(SimpleModel.DirtyFlag.Name);
-        model.GetDirtyFlags().Should().HaveFlag(SimpleModel.DirtyFlag.Age);
-        model.GetChangedProperties().Should().Contain("Name", "Age");
+        Assert.True(model.HasChanges());
+        Assert.True(model.GetDirtyFlags().HasFlag(SimpleModel.DirtyFlag.Name));
+        Assert.True(model.GetDirtyFlags().HasFlag(SimpleModel.DirtyFlag.Age));
+        Assert.Contains("Name", model.GetChangedProperties());
+        Assert.Contains("Age", model.GetChangedProperties());
     }
 
     /// <summary>
@@ -158,9 +160,10 @@ public class GeneratedPropertiesTests
         model.Tags.Add("Tag2");
         
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("Tags");
-        model.Tags.Should().Contain("Tag1", "Tag2");
+        Assert.True(model.HasChanges());
+        Assert.Contains("Tags", model.GetChangedProperties());
+        Assert.Contains("Tag1", model.Tags);
+        Assert.Contains("Tag2", model.Tags);
     }
 
     /// <summary>
@@ -177,10 +180,10 @@ public class GeneratedPropertiesTests
         model.Metadata["Key2"] = "Value2";
         
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("Metadata");
-        model.Metadata["Key1"].Should().Be("Value1");
-        model.Metadata["Key2"].Should().Be("Value2");
+        Assert.True(model.HasChanges());
+        Assert.Contains("Metadata", model.GetChangedProperties());
+        Assert.Equal("Value1", model.Metadata["Key1"]);
+        Assert.Equal("Value2", model.Metadata["Key2"]);
     }
 
     /// <summary>
@@ -198,10 +201,11 @@ public class GeneratedPropertiesTests
         model.Numbers.Add(1); // 重复添加
         
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("Numbers");
-        model.Numbers.Should().Contain(new[] { 1, 2 });
-        model.Numbers.Count.Should().Be(2);
+        Assert.True(model.HasChanges());
+        Assert.Contains("Numbers", model.GetChangedProperties());
+        Assert.Contains(1, model.Numbers);
+        Assert.Contains(2, model.Numbers);
+        Assert.Equal(2, model.Numbers.Count);
     }
 
     /// <summary>
@@ -219,8 +223,10 @@ public class GeneratedPropertiesTests
         model.Numbers.Add(1);
         
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("Tags", "Metadata", "Numbers");
+        Assert.True(model.HasChanges());
+        Assert.Contains("Tags", model.GetChangedProperties());
+        Assert.Contains("Metadata", model.GetChangedProperties());
+        Assert.Contains("Numbers", model.GetChangedProperties());
     }
 
     /// <summary>
@@ -239,12 +245,15 @@ public class GeneratedPropertiesTests
         model.Settings["Setting1"] = "Value1";
         
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("Title", "Categories", "PrimaryContact", "Settings");
-        model.Title.Should().Be("Test Title");
-        model.Categories.Should().Contain("Category1");
-        model.PrimaryContact.Name.Should().Be("Contact Name");
-        model.Settings["Setting1"].Should().Be("Value1");
+        Assert.True(model.HasChanges());
+        Assert.Contains("Title", model.GetChangedProperties());
+        Assert.Contains("Categories", model.GetChangedProperties());
+        Assert.Contains("PrimaryContact", model.GetChangedProperties());
+        Assert.Contains("Settings", model.GetChangedProperties());
+        Assert.Equal("Test Title", model.Title);
+        Assert.Contains("Category1", model.Categories);
+        Assert.Equal("Contact Name", model.PrimaryContact.Name);
+        Assert.Equal("Value1", model.Settings["Setting1"]);
     }
 
     /// <summary>
@@ -262,7 +271,7 @@ public class GeneratedPropertiesTests
         
         // Assert
         // 源生成器应该正确处理null值的相等性比较
-        model.GetChangedProperties().Should().Contain("Name");
+        Assert.Contains("Name", model.GetChangedProperties());
     }
 
     /// <summary>
@@ -281,8 +290,8 @@ public class GeneratedPropertiesTests
         model.BirthDate = date2;
         
         // Assert
-        model.BirthDate.Should().Be(date2);
-        model.GetChangedProperties().Should().Contain("BirthDate");
+        Assert.Equal(date2, model.BirthDate);
+        Assert.Contains("BirthDate", model.GetChangedProperties());
     }
 
     /// <summary>
@@ -295,8 +304,8 @@ public class GeneratedPropertiesTests
         var model = new ModelWithoutTrackableAttribute();
 
         // Act & Assert
-        model.HasChanges().Should().BeFalse();
-        model.GetChangedProperties().Should().BeEmpty();
+        Assert.False(model.HasChanges());
+        Assert.Empty(model.GetChangedProperties());
 
         // 测试属性设置
         model.Name = "Test Name";
@@ -304,16 +313,18 @@ public class GeneratedPropertiesTests
         model.IsActive = true;
 
         // Assert
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("Name", "Age", "IsActive");
-        model.Name.Should().Be("Test Name");
-        model.Age.Should().Be(25);
-        model.IsActive.Should().BeTrue();
+        Assert.True(model.HasChanges());
+        Assert.Contains("Name", model.GetChangedProperties());
+        Assert.Contains("Age", model.GetChangedProperties());
+        Assert.Contains("IsActive", model.GetChangedProperties());
+        Assert.Equal("Test Name", model.Name);
+        Assert.Equal(25, model.Age);
+        Assert.True(model.IsActive);
 
         // 测试清理功能
         model.MarkClean();
-        model.HasChanges().Should().BeFalse();
-        model.GetChangedProperties().Should().BeEmpty();
+        Assert.False(model.HasChanges());
+        Assert.Empty(model.GetChangedProperties());
     }
 
     /// <summary>
@@ -326,7 +337,7 @@ public class GeneratedPropertiesTests
         var model = new AutoTrackModel();
 
         // Act & Assert - 初始状态
-        model.HasChanges().Should().BeFalse();
+        Assert.False(model.HasChanges());
 
         // 设置自动追踪的字段
         model.AutoName = "Auto Test";
@@ -335,8 +346,11 @@ public class GeneratedPropertiesTests
         model.AutoIsActive = true;
 
         // Assert - 所有私有字段都被追踪
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("AutoName", "AutoAge", "AutoBirthDate", "AutoIsActive");
+        Assert.True(model.HasChanges());
+        Assert.Contains("AutoName", model.GetChangedProperties());
+        Assert.Contains("AutoAge", model.GetChangedProperties());
+        Assert.Contains("AutoBirthDate", model.GetChangedProperties());
+        Assert.Contains("AutoIsActive", model.GetChangedProperties());
     }
 
     /// <summary>
@@ -353,11 +367,11 @@ public class GeneratedPropertiesTests
         // 验证只有 AutoName 等字段有属性
 
         // Assert - 验证生成的属性不包括 IgnoredField
-        model.HasChanges().Should().BeFalse();
+        Assert.False(model.HasChanges());
         model.AutoName = "Test";
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("AutoName");
-        model.GetChangedProperties().Should().NotContain("IgnoredField");
+        Assert.True(model.HasChanges());
+        Assert.Contains("AutoName", model.GetChangedProperties());
+        Assert.DoesNotContain("IgnoredField", model.GetChangedProperties());
     }
 
     /// <summary>
@@ -373,11 +387,12 @@ public class GeneratedPropertiesTests
         model.TrackedField = "Tracked Value";
 
         // Assert - 只有 TrackedField 被追踪
-        model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("TrackedField");
-        model.GetChangedProperties().Should().NotContain("IgnoredField", "IgnoredNumber");
+        Assert.True(model.HasChanges());
+        Assert.Contains("TrackedField", model.GetChangedProperties());
+        Assert.DoesNotContain("IgnoredField", model.GetChangedProperties());
+        Assert.DoesNotContain("IgnoredNumber", model.GetChangedProperties());
 
         // 验证 TrackedField 属性存在且正常工作
-        model.TrackedField.Should().Be("Tracked Value");
+        Assert.Equal("Tracked Value", model.TrackedField);
     }
 }

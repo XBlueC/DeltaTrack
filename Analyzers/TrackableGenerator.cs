@@ -703,7 +703,6 @@ public class TrackableGenerator : IIncrementalGenerator
         public string Namespace { get; set; } = string.Empty;
         public string ClassName { get; set; } = string.Empty;
         public List<FieldInfo> Fields { get; set; } = new();
-        public bool HasParameterlessConstructor { get; set; }
     }
 
     private record FieldInfo

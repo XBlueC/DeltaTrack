@@ -1,6 +1,3 @@
-using DeltaTrack;
-using FluentAssertions;
-
 namespace Tests;
 
 /// <summary>
@@ -25,7 +22,7 @@ public class EventsAndCleanupTests
         model.Name = "Another Name"; // 第二次修改同一字段
 
         // Assert
-        eventCount.Should().Be(3);
+        Assert.Equal(3, eventCount);
     }
 
     /// <summary>
@@ -46,8 +43,8 @@ public class EventsAndCleanupTests
         model.Name = "Test";
 
         // Assert
-        eventCount1.Should().Be(1);
-        eventCount2.Should().Be(1);
+        Assert.Equal(1, eventCount1);
+        Assert.Equal(1, eventCount2);
     }
 
     /// <summary>
@@ -69,7 +66,7 @@ public class EventsAndCleanupTests
         model.Name = "Test2"; // 不应该触发事件
 
         // Assert
-        eventCount.Should().Be(1);
+        Assert.Equal(1, eventCount);
     }
 
     /// <summary>
@@ -90,7 +87,7 @@ public class EventsAndCleanupTests
         model.Metadata["Key"] = "Value";
 
         // Assert
-        eventCount.Should().Be(4);
+        Assert.Equal(4, eventCount);
     }
 
     /// <summary>
@@ -114,8 +111,8 @@ public class EventsAndCleanupTests
         child.Name = "Child Name";
 
         // Assert
-        childEventCount.Should().Be(1);
-        parentEventCount.Should().Be(2); // 父对象应该收到2个事件：Child属性变更 + 子对象脏状态传播
+        Assert.Equal(1, childEventCount);
+        Assert.Equal(2, parentEventCount); // 父对象应该收到2个事件：Child属性变更 + 子对象脏状态传播
     }
 
     /// <summary>
@@ -136,7 +133,7 @@ public class EventsAndCleanupTests
         model.Name = "New Value";
 
         // Assert
-        eventCount.Should().Be(2); // 初始设置 + 清理后的重新设置
+        Assert.Equal(2, eventCount); // 初始设置 + 清理后的重新设置
     }
 
     /// <summary>
@@ -165,15 +162,15 @@ public class EventsAndCleanupTests
         model.MarkClean(recursive: true);
 
         // Assert
-        model.HasChanges().Should().BeFalse();
-        contact.HasChanges().Should().BeFalse();
-        section.HasChanges().Should().BeFalse();
-        child.HasChanges().Should().BeFalse();
+        Assert.False(model.HasChanges());
+        Assert.False(contact.HasChanges());
+        Assert.False(section.HasChanges());
+        Assert.False(child.HasChanges());
 
-        model.GetChangedProperties().Should().BeEmpty();
-        contact.GetChangedProperties().Should().BeEmpty();
-        section.GetChangedProperties().Should().BeEmpty();
-        child.GetChangedProperties().Should().BeEmpty();
+        Assert.Empty(model.GetChangedProperties());
+        Assert.Empty(contact.GetChangedProperties());
+        Assert.Empty(section.GetChangedProperties());
+        Assert.Empty(child.GetChangedProperties());
     }
 
     /// <summary>
@@ -194,9 +191,9 @@ public class EventsAndCleanupTests
         model.MarkClean(recursive: false);
 
         // Assert
-        model.HasChanges().Should().BeFalse();
-        contact.HasChanges().Should().BeTrue(); // 子对象仍脏
-        contact.GetChangedProperties().Should().Contain("Name");
+        Assert.False(model.HasChanges());
+        Assert.True(contact.HasChanges()); // 子对象仍脏
+        Assert.Contains("Name", contact.GetChangedProperties());
     }
 
     /// <summary>
@@ -213,8 +210,8 @@ public class EventsAndCleanupTests
         model.MarkClean();
 
         // Assert
-        model.HasChanges().Should().BeFalse();
-        model.GetChangedProperties().Should().BeEmpty();
+        Assert.False(model.HasChanges());
+        Assert.Empty(model.GetChangedProperties());
     }
 
     /// <summary>
@@ -229,7 +226,7 @@ public class EventsAndCleanupTests
         // Act & Assert - 不应该抛出异常
         model.Child = null;
         var exception = Record.Exception(() => model.HasChanges());
-        exception.Should().BeNull();
+        Assert.Null(exception);
     }
 
     /// <summary>
@@ -247,8 +244,9 @@ public class EventsAndCleanupTests
         model.MarkChanged("Age");
 
         // Assert
-        model.GetChangedProperties().Should().HaveCount(2);
-        model.GetChangedProperties().Should().Contain("Name", "Age");
+        Assert.Equal(2, model.GetChangedProperties().Count);
+        Assert.Contains("Name", model.GetChangedProperties());
+        Assert.Contains("Age", model.GetChangedProperties());
     }
 
     /// <summary>
@@ -270,13 +268,13 @@ public class EventsAndCleanupTests
         var exception = Record.Exception(() => model.Name = "Test");
 
         // 异常应该被抛出
-        exception.Should().NotBeNull();
-        exception.Should().BeOfType<InvalidOperationException>();
+        Assert.NotNull(exception);
+        Assert.IsType<InvalidOperationException>(exception);
 
         // 正常的处理器应该被调用
-        normalHandlerCalled.Should().BeTrue();
+        Assert.True(normalHandlerCalled);
         // 异常后的处理器不应该被调用
-        exceptionHandlerCalled.Should().BeFalse();
+        Assert.False(exceptionHandlerCalled);
     }
 
     /// <summary>
@@ -297,7 +295,7 @@ public class EventsAndCleanupTests
         model.Age = 30; // 清理后再次变脏
 
         // Assert
-        eventCount.Should().Be(2); // 第一次设置 + 清理后重新设置
-        model.HasChanges().Should().BeTrue();
+        Assert.Equal(2, eventCount); // 第一次设置 + 清理后重新设置
+        Assert.True(model.HasChanges());
     }
 }

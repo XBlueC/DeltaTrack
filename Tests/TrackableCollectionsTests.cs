@@ -1,5 +1,4 @@
 using DeltaTrack;
-using FluentAssertions;
 
 namespace Tests;
 
@@ -23,9 +22,10 @@ public class TrackableListTests
         list.Add("Item2");
         
         // Assert
-        list.Count.Should().Be(2);
-        changeCount.Should().Be(2);
-        list.Should().Contain("Item1", "Item2");
+        Assert.Equal(2, list.Count);
+        Assert.Equal(2, changeCount);
+        Assert.Contains("Item1", list);
+        Assert.Contains("Item2", list);
     }
 
     /// <summary>
@@ -44,8 +44,8 @@ public class TrackableListTests
         list.Insert(1, "Item2");
         
         // Assert
-        changeCount.Should().Be(3);
-        list[1].Should().Be("Item2");
+        Assert.Equal(3, changeCount);
+        Assert.Equal("Item2", list[1]);
     }
 
     /// <summary>
@@ -64,8 +64,8 @@ public class TrackableListTests
         list[0] = "NewItem1";
         
         // Assert
-        changeCount.Should().Be(3);
-        list[0].Should().Be("NewItem1");
+        Assert.Equal(3, changeCount);
+        Assert.Equal("NewItem1", list[0]);
     }
 
     /// <summary>
@@ -84,9 +84,9 @@ public class TrackableListTests
         list.RemoveAt(0);
         
         // Assert
-        changeCount.Should().Be(3);
-        list.Count.Should().Be(1);
-        list[0].Should().Be("Item2");
+        Assert.Equal(3, changeCount);
+        Assert.Equal(1, list.Count);
+        Assert.Equal("Item2", list[0]);
     }
 
     /// <summary>
@@ -105,8 +105,8 @@ public class TrackableListTests
         list.Clear();
         
         // Assert
-        changeCount.Should().Be(3);
-        list.Count.Should().Be(0);
+        Assert.Equal(3, changeCount);
+        Assert.Equal(0, list.Count);
     }
 
     /// <summary>
@@ -123,9 +123,11 @@ public class TrackableListTests
         var list = new TrackableList<string>(() => changeCount++, initialItems);
         
         // Assert
-        list.Count.Should().Be(3);
-        changeCount.Should().Be(0); // 初始化不触发变更
-        list.Should().ContainInOrder("Item1", "Item2", "Item3");
+        Assert.Equal(3, list.Count);
+        Assert.Equal(0, changeCount); // 初始化不触发变更
+        Assert.Equal("Item1", list[0]);
+        Assert.Equal("Item2", list[1]);
+        Assert.Equal("Item3", list[2]);
     }
 }
 
@@ -149,10 +151,10 @@ public class TrackableDictionaryTests
         dict["Key2"] = "Value2";
         
         // Assert
-        dict.Count.Should().Be(2);
-        changeCount.Should().Be(2);
-        dict["Key1"].Should().Be("Value1");
-        dict["Key2"].Should().Be("Value2");
+        Assert.Equal(2, dict.Count);
+        Assert.Equal(2, changeCount);
+        Assert.Equal("Value1", dict["Key1"]);
+        Assert.Equal("Value2", dict["Key2"]);
     }
 
     /// <summary>
@@ -170,8 +172,8 @@ public class TrackableDictionaryTests
         dict["Key1"] = "NewValue1";
         
         // Assert
-        changeCount.Should().Be(2);
-        dict["Key1"].Should().Be("NewValue1");
+        Assert.Equal(2, changeCount);
+        Assert.Equal("NewValue1", dict["Key1"]);
     }
 
     /// <summary>
@@ -190,10 +192,10 @@ public class TrackableDictionaryTests
         var removed = dict.Remove("Key1");
         
         // Assert
-        removed.Should().BeTrue();
-        changeCount.Should().Be(3);
-        dict.Count.Should().Be(1);
-        dict.ContainsKey("Key1").Should().BeFalse();
+        Assert.True(removed);
+        Assert.Equal(3, changeCount);
+        Assert.Equal(1, dict.Count);
+        Assert.False(dict.ContainsKey("Key1"));
     }
 
     /// <summary>
@@ -212,8 +214,8 @@ public class TrackableDictionaryTests
         dict.Clear();
         
         // Assert
-        changeCount.Should().Be(3);
-        dict.Count.Should().Be(0);
+        Assert.Equal(3, changeCount);
+        Assert.Equal(0, dict.Count);
     }
 
     /// <summary>
@@ -234,10 +236,10 @@ public class TrackableDictionaryTests
         var dict = new TrackableDictionary<string, string>(() => changeCount++, initialData);
         
         // Assert
-        dict.Count.Should().Be(2);
-        changeCount.Should().Be(0); // 初始化不触发变更
-        dict["Key1"].Should().Be("Value1");
-        dict["Key2"].Should().Be("Value2");
+        Assert.Equal(2, dict.Count);
+        Assert.Equal(0, changeCount); // 初始化不触发变更
+        Assert.Equal("Value1", dict["Key1"]);
+        Assert.Equal("Value2", dict["Key2"]);
     }
 }
 
@@ -262,9 +264,10 @@ public class TrackableSetTests
         set.Add(1); // 重复添加
         
         // Assert
-        set.Count.Should().Be(2);
-        changeCount.Should().Be(2); // 重复添加不触发变更
-        set.Should().Contain(new[] { 1, 2 });
+        Assert.Equal(2, set.Count);
+        Assert.Equal(2, changeCount); // 重复添加不触发变更
+        Assert.Contains(1, set);
+        Assert.Contains(2, set);
     }
 
     /// <summary>
@@ -284,11 +287,11 @@ public class TrackableSetTests
         var notRemoved = set.Remove(3); // 不存在的元素
         
         // Assert
-        removed.Should().BeTrue();
-        notRemoved.Should().BeFalse();
-        changeCount.Should().Be(3);
-        set.Count.Should().Be(1);
-        set.Should().Contain(2);
+        Assert.True(removed);
+        Assert.False(notRemoved);
+        Assert.Equal(3, changeCount);
+        Assert.Equal(1, set.Count);
+        Assert.Contains(2, set);
     }
 
     /// <summary>
@@ -308,8 +311,8 @@ public class TrackableSetTests
         set.Clear();
         
         // Assert
-        changeCount.Should().Be(4);
-        set.Count.Should().Be(0);
+        Assert.Equal(4, changeCount);
+        Assert.Equal(0, set.Count);
     }
 
     /// <summary>
@@ -329,9 +332,12 @@ public class TrackableSetTests
         set.UnionWith(other);
         
         // Assert
-        changeCount.Should().Be(3); // 添加了3和4
-        set.Count.Should().Be(4);
-        set.Should().Contain(new[] { 1, 2, 3, 4 });
+        Assert.Equal(3, changeCount); // 添加了3和4
+        Assert.Equal(4, set.Count);
+        Assert.Contains(1, set);
+        Assert.Contains(2, set);
+        Assert.Contains(3, set);
+        Assert.Contains(4, set);
     }
 
     /// <summary>
@@ -352,9 +358,10 @@ public class TrackableSetTests
         set.IntersectWith(other);
         
         // Assert
-        changeCount.Should().Be(4);
-        set.Count.Should().Be(2);
-        set.Should().Contain(new[] { 2, 3 });
+        Assert.Equal(4, changeCount);
+        Assert.Equal(2, set.Count);
+        Assert.Contains(2, set);
+        Assert.Contains(3, set);
     }
 
     /// <summary>
@@ -375,9 +382,10 @@ public class TrackableSetTests
         set.ExceptWith(other);
         
         // Assert
-        changeCount.Should().Be(4);
-        set.Count.Should().Be(2);
-        set.Should().Contain(new[] { 1, 3 });
+        Assert.Equal(4, changeCount);
+        Assert.Equal(2, set.Count);
+        Assert.Contains(1, set);
+        Assert.Contains(3, set);
     }
 
     /// <summary>
@@ -398,9 +406,11 @@ public class TrackableSetTests
         set.SymmetricExceptWith(other);
         
         // Assert
-        changeCount.Should().Be(4);
-        set.Count.Should().Be(3);
-        set.Should().Contain(new[] { 1, 4, 5 });
+        Assert.Equal(4, changeCount);
+        Assert.Equal(3, set.Count);
+        Assert.Contains(1, set);
+        Assert.Contains(4, set);
+        Assert.Contains(5, set);
     }
 
     /// <summary>
@@ -417,8 +427,10 @@ public class TrackableSetTests
         var set = new TrackableSet<int>(() => changeCount++, initialItems);
         
         // Assert
-        set.Count.Should().Be(3);
-        changeCount.Should().Be(0); // 初始化不触发变更
-        set.Should().Contain(new[] { 1, 2, 3 });
+        Assert.Equal(3, set.Count);
+        Assert.Equal(0, changeCount); // 初始化不触发变更
+        Assert.Contains(1, set);
+        Assert.Contains(2, set);
+        Assert.Contains(3, set);
     }
 }

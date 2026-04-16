@@ -1,6 +1,3 @@
-using DeltaTrack;
-using FluentAssertions;
-
 namespace Tests;
 
 /// <summary>
@@ -25,17 +22,17 @@ public class RecursiveCleanupTests
         top.Nested.Child.Age = 10;
 
         // Verify dirty
-        top.HasChanges().Should().BeTrue();
-        top.Nested.HasChanges().Should().BeTrue();
-        top.Nested.Child.HasChanges().Should().BeTrue();
+        Assert.True(top.HasChanges());
+        Assert.True(top.Nested.HasChanges());
+        Assert.True(top.Nested.Child.HasChanges());
 
         // Act
         top.MarkClean(recursive: true);
 
         // Assert
-        top.HasChanges().Should().BeFalse("顶层应该被清理");
-        top.Nested.HasChanges().Should().BeFalse("中间层应该被清理");
-        top.Nested.Child.HasChanges().Should().BeFalse("最底层应该被清理");
+        Assert.False(top.HasChanges()); // 顶层应该被清理
+        Assert.False(top.Nested.HasChanges()); // 中间层应该被清理
+        Assert.False(top.Nested.Child.HasChanges()); // 最底层应该被清理
     }
 
     /// <summary>
@@ -56,10 +53,10 @@ public class RecursiveCleanupTests
         top.MarkClean(recursive: true);
 
         // Assert
-        top.HasChanges().Should().BeFalse();
-        top.Nested.HasChanges().Should().BeFalse();
-        child1.HasChanges().Should().BeFalse("列表中的子对象应该被递归清理");
-        child2.HasChanges().Should().BeFalse("列表中的子对象应该被递归清理");
+        Assert.False(top.HasChanges());
+        Assert.False(top.Nested.HasChanges());
+        Assert.False(child1.HasChanges()); // 列表中的子对象应该被递归清理
+        Assert.False(child2.HasChanges()); // 列表中的子对象应该被递归清理
     }
 
     /// <summary>
@@ -80,10 +77,10 @@ public class RecursiveCleanupTests
         top.MarkClean(recursive: true);
 
         // Assert
-        top.HasChanges().Should().BeFalse();
-        top.Nested.HasChanges().Should().BeFalse();
-        child1.HasChanges().Should().BeFalse("字典中的子对象应该被递归清理");
-        child2.HasChanges().Should().BeFalse("字典中的子对象应该被递归清理");
+        Assert.False(top.HasChanges());
+        Assert.False(top.Nested.HasChanges());
+        Assert.False(child1.HasChanges()); // 字典中的子对象应该被递归清理
+        Assert.False(child2.HasChanges()); // 字典中的子对象应该被递归清理
     }
 
     // ==================== HasChanges 守卫问题 ====================
@@ -109,15 +106,14 @@ public class RecursiveCleanupTests
         top.Nested.MarkClean(recursive: false);
 
         // 验证中间状态
-        top.Nested.HasChanges().Should().BeFalse("中间层已清理");
-        top.Nested.Child.HasChanges().Should().BeTrue("底层仍然脏");
+        Assert.False(top.Nested.HasChanges()); // 中间层已清理
+        Assert.True(top.Nested.Child.HasChanges()); // 底层仍然脏
 
         // Act - 顶层递归清理
         top.MarkClean(recursive: true);
 
         // Assert
-        top.Nested.Child.HasChanges().Should().BeFalse(
-            "即使中间层已干净，顶层递归清理也应该清理底层孙子节点");
+        Assert.False(top.Nested.Child.HasChanges()); // 即使中间层已干净，顶层递归清理也应该清理底层孙子节点
     }
 
     /// <summary>
@@ -138,15 +134,14 @@ public class RecursiveCleanupTests
         // 清理中间层（section），但不递归
         section.MarkClean(recursive: false);
 
-        section.HasChanges().Should().BeFalse();
-        grandChild.HasChanges().Should().BeTrue();
+        Assert.False(section.HasChanges());
+        Assert.True(grandChild.HasChanges());
 
         // Act
         model.MarkClean(recursive: true);
 
         // Assert
-        grandChild.HasChanges().Should().BeFalse(
-            "从顶层递归清理应该穿透已清理的中间层到达底层");
+        Assert.False(grandChild.HasChanges()); // 从顶层递归清理应该穿透已清理的中间层到达底层
     }
 
     // ==================== HashSet<Trackable> 递归清理 ====================
@@ -169,18 +164,16 @@ public class RecursiveCleanupTests
         model.Items.Add(item2);
 
         // Verify dirty
-        item1.HasChanges().Should().BeTrue();
-        item2.HasChanges().Should().BeTrue();
+        Assert.True(item1.HasChanges());
+        Assert.True(item2.HasChanges());
 
         // Act
         model.MarkClean(recursive: true);
 
         // Assert
-        model.HasChanges().Should().BeFalse();
-        item1.HasChanges().Should().BeFalse(
-            "HashSet 中的 Trackable 对象应该被递归清理");
-        item2.HasChanges().Should().BeFalse(
-            "HashSet 中的 Trackable 对象应该被递归清理");
+        Assert.False(model.HasChanges());
+        Assert.False(item1.HasChanges()); // HashSet 中的 Trackable 对象应该被递归清理
+        Assert.False(item2.HasChanges()); // HashSet 中的 Trackable 对象应该被递归清理
     }
 
     /// <summary>
@@ -198,8 +191,8 @@ public class RecursiveCleanupTests
         model.MarkClean(recursive: false);
 
         // Assert
-        model.HasChanges().Should().BeFalse();
-        item.HasChanges().Should().BeTrue("非递归清理不应该影响集合中的子对象");
+        Assert.False(model.HasChanges());
+        Assert.True(item.HasChanges()); // 非递归清理不应该影响集合中的子对象
     }
 
     // ==================== 混合 Trackable 集合递归清理 ====================
@@ -222,10 +215,10 @@ public class RecursiveCleanupTests
         model.MarkClean(recursive: true);
 
         // Assert
-        model.HasChanges().Should().BeFalse();
-        model.DirectChild.HasChanges().Should().BeFalse("直接Trackable字段应该被递归清理");
-        listItem.HasChanges().Should().BeFalse("List中的Trackable应该被递归清理");
-        dictItem.HasChanges().Should().BeFalse("Dictionary中的Trackable应该被递归清理");
+        Assert.False(model.HasChanges());
+        Assert.False(model.DirectChild.HasChanges()); // 直接Trackable字段应该被递归清理
+        Assert.False(listItem.HasChanges()); // List中的Trackable应该被递归清理
+        Assert.False(dictItem.HasChanges()); // Dictionary中的Trackable应该被递归清理
     }
 
     /// <summary>
@@ -248,8 +241,8 @@ public class RecursiveCleanupTests
         model.MarkClean(recursive: true);
 
         // Assert
-        cleanItem.HasChanges().Should().BeFalse();
-        dirtyItem.HasChanges().Should().BeFalse("即使是刚加入的脏对象也应该被清理");
+        Assert.False(cleanItem.HasChanges());
+        Assert.False(dirtyItem.HasChanges()); // 即使是刚加入的脏对象也应该被清理
     }
 
     // ==================== Null 安全性 ====================
@@ -268,7 +261,7 @@ public class RecursiveCleanupTests
         var exception = Record.Exception(() => model.MarkClean(recursive: true));
 
         // Assert
-        exception.Should().BeNull("null 子对象不应该导致递归清理异常");
+        Assert.Null(exception); // null 子对象不应该导致递归清理异常
     }
 
     /// <summary>
@@ -285,7 +278,7 @@ public class RecursiveCleanupTests
         var exception = Record.Exception(() => model.MarkClean(recursive: true));
 
         // Assert
-        exception.Should().BeNull("集合中的 null 元素不应该导致递归清理异常");
+        Assert.Null(exception); // 集合中的 null 元素不应该导致递归清理异常
     }
 
     // ==================== 空集合 ====================
@@ -305,8 +298,8 @@ public class RecursiveCleanupTests
         model.MarkClean(recursive: true);
 
         // Assert
-        model.HasChanges().Should().BeFalse();
-        model.DirectChild.HasChanges().Should().BeFalse();
+        Assert.False(model.HasChanges());
+        Assert.False(model.DirectChild.HasChanges());
     }
 
     // ==================== 替换子对象后的递归清理 ====================
@@ -329,10 +322,10 @@ public class RecursiveCleanupTests
         model.MarkClean(recursive: true);
 
         // Assert
-        model.HasChanges().Should().BeFalse();
-        newChild.HasChanges().Should().BeFalse("新子对象应该被递归清理");
+        Assert.False(model.HasChanges());
+        Assert.False(newChild.HasChanges()); // 新子对象应该被递归清理
         // 旧子对象自身的脏状态不受父对象清理的影响（已取消订阅）
-        oldChild.HasChanges().Should().BeTrue("旧子对象已脱离，不应受递归清理影响");
+        Assert.True(oldChild.HasChanges()); // 旧子对象已脱离，不应受递归清理影响
     }
 
     // ==================== 多次清理 ====================
@@ -353,8 +346,8 @@ public class RecursiveCleanupTests
         model.DirectChild.Age = 1;
         model.MarkClean(recursive: true);
 
-        model.HasChanges().Should().BeFalse();
-        item.HasChanges().Should().BeFalse();
+        Assert.False(model.HasChanges());
+        Assert.False(item.HasChanges());
 
         // 第二轮: 再次变脏 + 清理
         item.Name = "Second";
@@ -362,9 +355,9 @@ public class RecursiveCleanupTests
         model.MarkClean(recursive: true);
 
         // Assert
-        model.HasChanges().Should().BeFalse();
-        item.HasChanges().Should().BeFalse("多轮清理应该正常工作");
-        model.DirectChild.HasChanges().Should().BeFalse();
+        Assert.False(model.HasChanges());
+        Assert.False(item.HasChanges()); // 多轮清理应该正常工作
+        Assert.False(model.DirectChild.HasChanges());
     }
 
     // ==================== ComplexModel 深层组合 ====================
@@ -393,21 +386,21 @@ public class RecursiveCleanupTests
         section.NamedChildren["x"] = dictChild;
 
         // Verify everything is dirty
-        model.HasChanges().Should().BeTrue();
-        contact.HasChanges().Should().BeTrue();
-        section.HasChanges().Should().BeTrue();
-        listChild.HasChanges().Should().BeTrue();
-        dictChild.HasChanges().Should().BeTrue();
+        Assert.True(model.HasChanges());
+        Assert.True(contact.HasChanges());
+        Assert.True(section.HasChanges());
+        Assert.True(listChild.HasChanges());
+        Assert.True(dictChild.HasChanges());
 
         // Act
         model.MarkClean(recursive: true);
 
         // Assert
-        model.HasChanges().Should().BeFalse();
-        contact.HasChanges().Should().BeFalse("PrimaryContact 应该被清理");
-        section.HasChanges().Should().BeFalse("Sections 中的 NestedModel 应该被清理");
-        listChild.HasChanges().Should().BeFalse("Sections[].Children[] 中的对象应该被清理");
-        dictChild.HasChanges().Should().BeFalse("Sections[].NamedChildren[] 中的对象应该被清理");
+        Assert.False(model.HasChanges());
+        Assert.False(contact.HasChanges()); // PrimaryContact 应该被清理
+        Assert.False(section.HasChanges()); // Sections 中的 NestedModel 应该被清理
+        Assert.False(listChild.HasChanges()); // Sections[].Children[] 中的对象应该被清理
+        Assert.False(dictChild.HasChanges()); // Sections[].NamedChildren[] 中的对象应该被清理
     }
 
     /// <summary>
@@ -427,6 +420,6 @@ public class RecursiveCleanupTests
         model.MarkClean(recursive: true);
 
         // Assert
-        shared.HasChanges().Should().BeFalse("共享的对象应该被清理（至少一个路径会清理它）");
+        Assert.False(shared.HasChanges()); // 共享的对象应该被清理（至少一个路径会清理它）
     }
 }
