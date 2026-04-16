@@ -21,7 +21,7 @@ public class TrackableList<T> : Collection<T> where T : notnull
     protected override void InsertItem(int index, T item)
     {
         base.InsertItem(index, item);
-        _tracker.HandleItemAdded(item, _onChanged, index.ToString());
+        _tracker.HandleItemAdded(item, _onChanged);
         _onChanged();
     }
 
@@ -29,8 +29,8 @@ public class TrackableList<T> : Collection<T> where T : notnull
     {
         var oldItem = this[index];
         base.SetItem(index, item);
-        _tracker.HandleItemRemoved(oldItem, _onChanged, index.ToString());
-        _tracker.HandleItemAdded(item, _onChanged, index.ToString());
+        _tracker.HandleItemRemoved(oldItem, _onChanged);
+        _tracker.HandleItemAdded(item, _onChanged);
         _onChanged();
     }
 
@@ -38,7 +38,7 @@ public class TrackableList<T> : Collection<T> where T : notnull
     {
         var item = this[index];
         base.RemoveItem(index);
-        _tracker.HandleItemRemoved(item, _onChanged, index.ToString());
+        _tracker.HandleItemRemoved(item, _onChanged);
         _onChanged();
     }
 
@@ -48,7 +48,7 @@ public class TrackableList<T> : Collection<T> where T : notnull
             return;
         for (int i = 0; i < Count; i++)
         {
-            _tracker.HandleItemRemoved(this[i], _onChanged, i.ToString());
+            _tracker.HandleItemRemoved(this[i], _onChanged);
         }
 
         base.ClearItems();

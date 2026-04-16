@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 
 namespace DeltaTrack;
 
@@ -21,7 +21,7 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>
 
         foreach (var kvp in _inner)
         {
-            _tracker.HandleItemAdded(kvp.Value, _onChanged, kvp.Key?.ToString());
+            _tracker.HandleItemAdded(kvp.Value, _onChanged);
         }
     }
 
@@ -35,10 +35,10 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>
 
             if (hasOld)
             {
-                _tracker.HandleItemRemoved(oldValue, _onChanged, key?.ToString());
+                _tracker.HandleItemRemoved(oldValue, _onChanged);
             }
 
-            _tracker.HandleItemAdded(value, _onChanged, key?.ToString());
+            _tracker.HandleItemAdded(value, _onChanged);
             _onChanged?.Invoke();
         }
     }
@@ -46,7 +46,7 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>
     public void Add(TKey key, TValue value)
     {
         _inner.Add(key, value);
-        _tracker.HandleItemAdded(value, _onChanged, key?.ToString());
+        _tracker.HandleItemAdded(value, _onChanged);
         _onChanged?.Invoke();
     }
 
@@ -54,7 +54,7 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>
     {
         if (_inner.TryGetValue(key, out var value) && _inner.Remove(key))
         {
-            _tracker.HandleItemRemoved(value, _onChanged, key?.ToString());
+            _tracker.HandleItemRemoved(value, _onChanged);
             _onChanged?.Invoke();
             return true;
         }
@@ -68,7 +68,7 @@ public class TrackableDictionary<TKey, TValue> : IDictionary<TKey, TValue>
         {
             foreach (var kvp in _inner)
             {
-                _tracker.HandleItemRemoved(kvp.Value, _onChanged, kvp.Key?.ToString());
+                _tracker.HandleItemRemoved(kvp.Value, _onChanged);
             }
 
             _inner.Clear();

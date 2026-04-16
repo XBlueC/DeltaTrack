@@ -24,11 +24,6 @@ public class ChangeTracker : IChangeTracker
     {
         OnClean?.Invoke(recursive);
         _changedProperties.Clear();
-
-        if (recursive)
-        {
-            MarkChildrenClean();
-        }
     }
 
     public event Action OnChanged;
@@ -67,25 +62,7 @@ public class ChangeTracker : IChangeTracker
         }
     }
 
-    private bool HasDirtyChildren()
-    {
-        foreach (var child in _childSubscriptions.Keys)
-        {
-            if (child.GetChangeTracker().HasChanges())
-                return true;
-        }
-        return false;
-    }
-
-    private void MarkChildrenClean()
-    {
-        foreach (var child in _childSubscriptions.Keys)
-        {
-            child.GetChangeTracker().MarkClean(recursive: true);
-        }
-    }
-
-    public void HandleItemAdded(object item, Action onChange, string indexPath = null)
+    public void HandleItemAdded(object item, Action onChange)
     {
         if (item is ITrackable trackable)
         {
@@ -93,16 +70,14 @@ public class ChangeTracker : IChangeTracker
         }
         else if (item is IEnumerable enumerable && item is not string)
         {
-            int index = 0;
             foreach (var element in enumerable)
             {
-                HandleItemAdded(element, onChange, index.ToString());
-                index++;
+                HandleItemAdded(element, onChange);
             }
         }
     }
 
-    public void HandleItemRemoved(object item, Action onChange, string indexPath = null)
+    public void HandleItemRemoved(object item, Action onChange)
     {
         if (item is ITrackable trackable)
         {
@@ -110,11 +85,9 @@ public class ChangeTracker : IChangeTracker
         }
         else if (item is IEnumerable enumerable && item is not string)
         {
-            var index = 0;
             foreach (var element in enumerable)
             {
-                HandleItemRemoved(element, onChange, $"{indexPath}.{index}");
-                index++;
+                HandleItemRemoved(element, onChange);
             }
         }
     }

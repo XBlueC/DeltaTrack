@@ -84,3 +84,34 @@ public partial class ComplexModel
     [TrackableField] private Dictionary<string, NestedModel> _sections = new();
     [TrackableField] private Dictionary<string, string> _settings = new();
 }
+
+/// <summary>
+/// 测试用的三层嵌套模型 - 用于测试深层递归清理
+/// </summary>
+[Trackable]
+public partial class ThreeLevelModel
+{
+    [TrackableField] private string _label = "";
+    [TrackableField] private NestedModel _nested = new();
+}
+
+/// <summary>
+/// 测试用的 HashSet 包含可追踪对象的模型
+/// </summary>
+[Trackable]
+public partial class SetOfTrackableModel
+{
+    [TrackableField] private string _name = "";
+    [TrackableField] private HashSet<SimpleModel> _items = new();
+}
+
+/// <summary>
+/// 测试用的多种可追踪集合混合模型
+/// </summary>
+[Trackable]
+public partial class MixedTrackableCollectionsModel
+{
+    [TrackableField] private List<SimpleModel> _trackableList = new();
+    [TrackableField] private Dictionary<string, SimpleModel> _trackableDict = new();
+    [TrackableField] private SimpleModel _directChild = new();
+}
