@@ -5,7 +5,7 @@
         <Nullable>disable</Nullable>
         <RootNamespace>DeltaTrack</RootNamespace>
         <PackageId>DeltaTrack</PackageId>
-        <Version>1.0.6</Version>
+        <Version>1.0.7</Version>
         <Authors>XBlueC</Authors>
         <Description>Precise object change detection library - Generates code at compile time using Roslyn, automatically tracks property changes with zero intrusion, supports nested objects and collection monitoring.</Description>
         <PackageProjectUrl>https://github.com/XBlueC/DeltaTrack</PackageProjectUrl>
@@ -17,7 +17,7 @@
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <LangVersion>14</LangVersion>
         <PackageReadmeFile>README.md</PackageReadmeFile>
-        <PackageIcon>packageIcon.png</PackageIcon>
+<!--        <PackageIcon>icon.png</PackageIcon>-->
     </PropertyGroup>
     <ItemGroup>
         <None Include="../README.md" Pack="true" PackagePath="\"/>
