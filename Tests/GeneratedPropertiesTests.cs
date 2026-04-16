@@ -116,13 +116,32 @@ public class GeneratedPropertiesTests
     {
         // Arrange
         var model = new SimpleModel();
-        
-        // Act
-        model.MarkChanged("CustomField");
-        
+    
+        // Act - 使用已知属性名
+        model.MarkChanged("Name");
+    
         // Assert
         model.HasChanges().Should().BeTrue();
-        model.GetChangedProperties().Should().Contain("CustomField");
+        model.GetChangedProperties().Should().Contain("Name");
+    }
+    
+    /// <summary>
+    /// 测试使用类型安全的 DirtyFlag 标记
+    /// </summary>
+    [Fact]
+    public void SimpleModel_Should_Allow_DirtyFlag_Marking()
+    {
+        // Arrange
+        var model = new SimpleModel();
+    
+        // Act
+        model.MarkChanged(SimpleModel.DirtyFlag.Name | SimpleModel.DirtyFlag.Age);
+    
+        // Assert
+        model.HasChanges().Should().BeTrue();
+        model.GetDirtyFlags().Should().HaveFlag(SimpleModel.DirtyFlag.Name);
+        model.GetDirtyFlags().Should().HaveFlag(SimpleModel.DirtyFlag.Age);
+        model.GetChangedProperties().Should().Contain("Name", "Age");
     }
 
     /// <summary>

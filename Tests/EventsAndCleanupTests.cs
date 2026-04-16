@@ -17,7 +17,7 @@ public class EventsAndCleanupTests
         // Arrange
         var model = new SimpleModel();
         var eventCount = 0;
-        model.GetChangeTracker().OnChanged += () => eventCount++;
+        model.OnChanged += () => eventCount++;
 
         // Act
         model.Name = "Test Name";
@@ -39,8 +39,8 @@ public class EventsAndCleanupTests
         var eventCount1 = 0;
         var eventCount2 = 0;
 
-        model.GetChangeTracker().OnChanged += () => eventCount1++;
-        model.GetChangeTracker().OnChanged += () => eventCount2++;
+        model.OnChanged += () => eventCount1++;
+        model.OnChanged += () => eventCount2++;
 
         // Act
         model.Name = "Test";
@@ -61,11 +61,11 @@ public class EventsAndCleanupTests
         var eventCount = 0;
         Action handler = () => eventCount++;
 
-        model.GetChangeTracker().OnChanged += handler;
+        model.OnChanged += handler;
         model.Name = "Test1"; // 触发事件
 
         // Act
-        model.GetChangeTracker().OnChanged -= handler;
+        model.OnChanged -= handler;
         model.Name = "Test2"; // 不应该触发事件
 
         // Assert
@@ -81,7 +81,7 @@ public class EventsAndCleanupTests
         // Arrange
         var model = new CollectionModel();
         var eventCount = 0;
-        model.GetChangeTracker().OnChanged += () => eventCount++;
+        model.OnChanged += () => eventCount++;
 
         // Act
         model.Tags.Add("Tag1");
@@ -105,8 +105,8 @@ public class EventsAndCleanupTests
         var parentEventCount = 0;
         var childEventCount = 0;
 
-        parent.GetChangeTracker().OnChanged += () => parentEventCount++;
-        child.GetChangeTracker().OnChanged += () => childEventCount++;
+        parent.OnChanged += () => parentEventCount++;
+        child.OnChanged += () => childEventCount++;
 
         parent.Child = child;
 
@@ -127,7 +127,7 @@ public class EventsAndCleanupTests
         // Arrange
         var model = new SimpleModel();
         var eventCount = 0;
-        model.GetChangeTracker().OnChanged += () => eventCount++;
+        model.OnChanged += () => eventCount++;
 
         model.Name = "Initial";
         model.MarkClean();
@@ -242,13 +242,13 @@ public class EventsAndCleanupTests
         var model = new SimpleModel();
 
         // Act
-        model.MarkChanged("TestField");
-        model.MarkChanged("TestField"); // 重复标记
-        model.MarkChanged("AnotherField");
+        model.MarkChanged("Name");
+        model.MarkChanged("Name"); // 重复标记
+        model.MarkChanged("Age");
 
         // Assert
         model.GetChangedProperties().Should().HaveCount(2);
-        model.GetChangedProperties().Should().Contain("TestField", "AnotherField");
+        model.GetChangedProperties().Should().Contain("Name", "Age");
     }
 
     /// <summary>
@@ -262,9 +262,9 @@ public class EventsAndCleanupTests
         var normalHandlerCalled = false;
         var exceptionHandlerCalled = false;
 
-        model.GetChangeTracker().OnChanged += () => normalHandlerCalled = true;
-        model.GetChangeTracker().OnChanged += () => throw new InvalidOperationException("Test Exception");
-        model.GetChangeTracker().OnChanged += () => exceptionHandlerCalled = true;
+        model.OnChanged += () => normalHandlerCalled = true;
+        model.OnChanged += () => throw new InvalidOperationException("Test Exception");
+        model.OnChanged += () => exceptionHandlerCalled = true;
 
         // Act & Assert
         var exception = Record.Exception(() => model.Name = "Test");
@@ -288,7 +288,7 @@ public class EventsAndCleanupTests
         // Arrange
         var model = new SimpleModel();
         var eventCount = 0;
-        model.GetChangeTracker().OnChanged += () => eventCount++;
+        model.OnChanged += () => eventCount++;
 
         model.Name = "Test";
         model.MarkClean();

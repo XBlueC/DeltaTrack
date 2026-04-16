@@ -306,6 +306,8 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine($"    partial class {classInfo.ClassName} : global::DeltaTrack.ITrackable");
         sb.AppendLine("    {");
 
+        AppendDirtyFlagEnum(sb, classInfo);
+        AppendDirtyFlagNames(sb, classInfo);
         AppendTrackerProperty(sb, classInfo);
         AppendProperties(sb, classInfo);
         AppendOnChangeMethods(sb, classInfo);
@@ -331,6 +333,29 @@ public class TrackableGenerator : IIncrementalGenerator
         context.AddSource(hintName, sb.ToString());
     }
 
+    private static void AppendDirtyFlagEnum(StringBuilder sb, ClassInfo classInfo)
+    {
+        sb.AppendLine("        [global::System.Flags]");
+        sb.AppendLine("        public enum DirtyFlag : long");
+        sb.AppendLine("        {");
+        sb.AppendLine("            None = 0,");
+        for (var i = 0; i < classInfo.Fields.Count; i++)
+        {
+            var propName = ToPropertyName(classInfo.Fields[i].Name);
+            sb.AppendLine($"            {propName} = 1L << {i},");
+        }
+
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    private static void AppendDirtyFlagNames(StringBuilder sb, ClassInfo classInfo)
+    {
+        var names = classInfo.Fields.Select(f => $"\"{ToPropertyName(f.Name)}\"");
+        sb.AppendLine($"        private static readonly string[] _dirtyFlagNames = new string[] {{ {string.Join(", ", names)} }};");
+        sb.AppendLine();
+    }
+
     private static void AppendTrackerProperty(StringBuilder sb, ClassInfo classInfo)
     {
         var trackableFields = classInfo.Fields.Where(f => f.IsTrackable).ToList();
@@ -352,7 +377,15 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine("            return tracker;");
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine("        public global::DeltaTrack.IChangeTracker GetChangeTracker() => GetTracker();");
+        sb.AppendLine("        public bool HasChanges() => GetTracker().HasChanges();");
+        sb.AppendLine();
+        sb.AppendLine("        public void MarkClean(bool recursive = false) => GetTracker().MarkClean(recursive);");
+        sb.AppendLine();
+        sb.AppendLine("        public event global::System.Action OnChanged");
+        sb.AppendLine("        {");
+        sb.AppendLine("            add => GetTracker().OnChanged += value;");
+        sb.AppendLine("            remove => GetTracker().OnChanged -= value;");
+        sb.AppendLine("        }");
         sb.AppendLine();
     }
 
@@ -489,10 +522,10 @@ public class TrackableGenerator : IIncrementalGenerator
 
     private static void AppendOnChangeMethods(StringBuilder sb, ClassInfo classInfo)
     {
-        foreach (var field in classInfo.Fields)
+        for (var i = 0; i < classInfo.Fields.Count; i++)
         {
-            var propName = ToPropertyName(field.Name);
-            sb.AppendLine($@"        private void On{propName}Changed() => MarkPropChanged(nameof({propName}));");
+            var propName = ToPropertyName(classInfo.Fields[i].Name);
+            sb.AppendLine($@"        private void On{propName}Changed() => GetTracker().MarkChanged(1L << {i});");
         }
 
         sb.AppendLine();
@@ -500,11 +533,7 @@ public class TrackableGenerator : IIncrementalGenerator
 
     private static void AppendHelperMethods(StringBuilder sb, ClassInfo classInfo)
     {
-        sb.AppendLine("        private void MarkPropChanged(string property)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            GetTracker().MarkChanged(property);");
-        sb.AppendLine("        }");
-        sb.AppendLine();
+        // MarkPropClean (recursive cleanup)
         sb.AppendLine("        private void MarkPropClean(bool recursive = false)");
         sb.AppendLine("        {");
 
@@ -519,7 +548,7 @@ public class TrackableGenerator : IIncrementalGenerator
                 if (field.IsTrackable)
                 {
                     sb.AppendLine($@"                if ({fieldName} is global::DeltaTrack.ITrackable trackable_{fieldName})");
-                    sb.AppendLine($@"                    trackable_{fieldName}.GetChangeTracker().MarkClean(true);");
+                    sb.AppendLine($@"                    trackable_{fieldName}.MarkClean(true);");
                 }
                 else if (field.IsCollection)
                 {
@@ -530,7 +559,7 @@ public class TrackableGenerator : IIncrementalGenerator
                         sb.AppendLine($@"                    foreach (var item in {fieldName})");
                         sb.AppendLine($@"                    {{");
                         sb.AppendLine($@"                        if (item is global::DeltaTrack.ITrackable trackableItem)");
-                        sb.AppendLine($@"                            trackableItem.GetChangeTracker().MarkClean(true);");
+                        sb.AppendLine($@"                            trackableItem.MarkClean(true);");
                         sb.AppendLine($@"                    }}");
                         sb.AppendLine($@"                }}");
                     }
@@ -541,7 +570,7 @@ public class TrackableGenerator : IIncrementalGenerator
                         sb.AppendLine($@"                    foreach (var kvp in {fieldName})");
                         sb.AppendLine($@"                    {{");
                         sb.AppendLine($@"                        if (kvp.Value is global::DeltaTrack.ITrackable trackableValue)");
-                        sb.AppendLine($@"                            trackableValue.GetChangeTracker().MarkClean(true);");
+                        sb.AppendLine($@"                            trackableValue.MarkClean(true);");
                         sb.AppendLine($@"                    }}");
                         sb.AppendLine($@"                }}");
                     }
@@ -551,6 +580,46 @@ public class TrackableGenerator : IIncrementalGenerator
             sb.AppendLine("            }");
         }
 
+        sb.AppendLine("        }");
+        sb.AppendLine();
+
+        // GetDirtyFlags()
+        sb.AppendLine("        public DirtyFlag GetDirtyFlags() => (DirtyFlag)GetTracker().DirtyFlags;");
+        sb.AppendLine();
+
+        // GetChangedProperties() - string-based for compatibility/debugging
+        sb.AppendLine("        public global::System.Collections.Generic.IReadOnlyList<string> GetChangedProperties()");
+        sb.AppendLine("        {");
+        sb.AppendLine("            var flags = GetTracker().DirtyFlags;");
+        sb.AppendLine("            if (flags == 0) return global::System.Array.Empty<string>();");
+        sb.AppendLine("            var result = new global::System.Collections.Generic.List<string>();");
+        sb.AppendLine("            for (int i = 0; i < _dirtyFlagNames.Length; i++)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                if ((flags & (1L << i)) != 0)");
+        sb.AppendLine("                    result.Add(_dirtyFlagNames[i]);");
+        sb.AppendLine("            }");
+        sb.AppendLine("            return result;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+
+        // MarkChanged(DirtyFlag) - type-safe
+        sb.AppendLine("        public void MarkChanged(DirtyFlag flag)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            GetTracker().MarkChanged((long)flag);");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+
+        // MarkChanged(string) - string-based for compatibility
+        sb.AppendLine("        public void MarkChanged(string property)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            for (int i = 0; i < _dirtyFlagNames.Length; i++)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                if (_dirtyFlagNames[i] == property)");
+        sb.AppendLine("                {");
+        sb.AppendLine("                    GetTracker().MarkChanged(1L << i);");
+        sb.AppendLine("                    return;");
+        sb.AppendLine("                }");
+        sb.AppendLine("            }");
         sb.AppendLine("        }");
     }
 

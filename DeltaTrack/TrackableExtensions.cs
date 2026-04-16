@@ -4,43 +4,21 @@ public static class TrackableExtensions
 {
     extension(ITrackable trackable)
     {
-        public bool HasChanges()
-        {
-            return trackable.GetChangeTracker().HasChanges();
-        }
-
-        public IReadOnlyCollection<string> GetChangedProperties()
-        {
-            return trackable.GetChangeTracker().GetChangedProperties();
-        }
-
-        public void MarkClean(bool recursive = false)
-        {
-            trackable.GetChangeTracker().MarkClean(recursive);
-        }
-
-        public void MarkChanged(string property)
-        {
-            trackable.GetChangeTracker().MarkChanged(property);
-        }
-
         public IDisposable SubscribeToChanges(Action handler)
         {
-            var tracker = trackable.GetChangeTracker();
-            tracker.OnChanged += handler;
-
-            return new ChangeSubscription(tracker, handler);
+            trackable.OnChanged += handler;
+            return new ChangeSubscription(trackable, handler);
         }
     }
 
-    private class ChangeSubscription(IChangeTracker tracker, Action handler) : IDisposable
+    private class ChangeSubscription(ITrackable trackable, Action handler) : IDisposable
     {
         private bool _disposed;
 
         public void Dispose()
         {
             if (_disposed) return;
-            tracker.OnChanged -= handler;
+            trackable.OnChanged -= handler;
             _disposed = true;
         }
     }

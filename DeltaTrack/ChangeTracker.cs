@@ -2,28 +2,26 @@ using System.Collections;
 
 namespace DeltaTrack;
 
-public class ChangeTracker : IChangeTracker
+public class ChangeTracker : IDisposable
 {
-    private readonly HashSet<string> _changedProperties = new();
+    private long _dirtyFlags;
     private readonly Dictionary<ITrackable, (int Count, Action OnChange)> _childSubscriptions = new();
     private bool _disposed;
 
-    public ChangeTracker(Action onInit = null) => onInit?.Invoke();
+    public bool HasChanges() => _dirtyFlags != 0;
 
-    public bool HasChanges() => _changedProperties.Count > 0;
+    public long DirtyFlags => _dirtyFlags;
 
-    public IReadOnlyCollection<string> GetChangedProperties() => _changedProperties;
-
-    public void MarkChanged(string property)
+    public void MarkChanged(long flag)
     {
-        _changedProperties.Add(property);
+        _dirtyFlags |= flag;
         OnChanged?.Invoke();
     }
 
     public void MarkClean(bool recursive = false)
     {
         OnClean?.Invoke(recursive);
-        _changedProperties.Clear();
+        _dirtyFlags = 0;
     }
 
     public event Action OnChanged;
@@ -40,7 +38,7 @@ public class ChangeTracker : IChangeTracker
         else
         {
             _childSubscriptions[child] = (1, onChange);
-            child.GetChangeTracker().OnChanged += onChange;
+            child.OnChanged += onChange;
         }
     }
 
@@ -53,7 +51,7 @@ public class ChangeTracker : IChangeTracker
             if (existing.Count <= 1)
             {
                 _childSubscriptions.Remove(child);
-                child.GetChangeTracker().OnChanged -= existing.OnChange;
+                child.OnChanged -= existing.OnChange;
             }
             else
             {
@@ -115,7 +113,7 @@ public class ChangeTracker : IChangeTracker
                     SubscribeItem(element, onChange);
                 break;
             case ITrackable trackable:
-                trackable.GetChangeTracker().OnChanged += onChange;
+                trackable.OnChanged += onChange;
                 break;
         }
     }
@@ -135,7 +133,7 @@ public class ChangeTracker : IChangeTracker
                     UnsubscribeItem(element, onChange);
                 break;
             case ITrackable trackable:
-                trackable.GetChangeTracker().OnChanged -= onChange;
+                trackable.OnChanged -= onChange;
                 break;
         }
     }
@@ -159,11 +157,11 @@ public class ChangeTracker : IChangeTracker
 
         foreach (var entry in _childSubscriptions)
         {
-            entry.Key.GetChangeTracker().OnChanged -= entry.Value.OnChange;
+            entry.Key.OnChanged -= entry.Value.OnChange;
         }
 
         _childSubscriptions.Clear();
-        _changedProperties.Clear();
+        _dirtyFlags = 0;
 
         OnChanged = null;
         OnClean = null;
