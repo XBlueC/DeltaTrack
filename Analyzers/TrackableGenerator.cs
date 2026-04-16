@@ -342,21 +342,6 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine("            return _tracker ??= CreateTracker();");
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine("        private void EnsureTracker()");
-        sb.AppendLine("        {");
-        sb.AppendLine("            if (_tracker == null)");
-        sb.AppendLine("            {");
-        sb.AppendLine("                _tracker = new global::DeltaTrack.ChangeTracker();");
-        sb.AppendLine("                _tracker.OnClean += MarkPropClean;");
-        foreach (var field in trackableFields)
-        {
-            var propName = ToPropertyName(field.Name);
-            sb.AppendLine($"                if ({field.Name} != null) _tracker.Subscribe({propName}, On{propName}Changed);");
-        }
-
-        sb.AppendLine("            }");
-        sb.AppendLine("        }");
-        sb.AppendLine();
         sb.AppendLine("        private global::DeltaTrack.ChangeTracker CreateTracker()");
         sb.AppendLine("        {");
         sb.AppendLine("            var tracker = new global::DeltaTrack.ChangeTracker();");
@@ -426,7 +411,7 @@ public class TrackableGenerator : IIncrementalGenerator
         AppendAddedAttributes(sb, field);
         sb.AppendLine($@"        public {fieldType} {propName}");
         sb.AppendLine(@"        {");
-        sb.AppendLine($@"            get {{ EnsureTracker(); return {fieldName}; }}");
+        sb.AppendLine($@"            get {{ GetTracker(); return {fieldName}; }}");
         sb.AppendLine(@"            set");
         sb.AppendLine(@"            {");
         sb.AppendLine($@"                GetTracker();");
@@ -563,6 +548,14 @@ public class TrackableGenerator : IIncrementalGenerator
                         sb.AppendLine($@"                    }}");
                         sb.AppendLine($@"                }}");
                     }
+                    else
+                    {
+                        sb.AppendLine($@"                // {propName} is not trackable ");
+                    }
+                }
+                else
+                {
+                    sb.AppendLine($@"                // {propName} is not trackable but may contain trackable items");
                 }
             }
 

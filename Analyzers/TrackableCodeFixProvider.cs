@@ -1,7 +1,5 @@
 using System.Collections.Immutable;
 using System.Composition;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
@@ -15,8 +13,7 @@ public class TrackableCodeFixProvider : CodeFixProvider
     private const string TrackableAttributeRuleId = "TRACK001";
     private const string TrackableFieldRuleId = "TRACK002";
 
-    public override ImmutableArray<string> FixableDiagnosticIds =>
-        [TrackableAttributeRuleId, TrackableFieldRuleId];
+    public override ImmutableArray<string> FixableDiagnosticIds => ImmutableArray.Create(TrackableAttributeRuleId, TrackableFieldRuleId);
 
     public override async Task RegisterCodeFixesAsync(CodeFixContext context)
     {
@@ -191,8 +188,6 @@ public class TrackableCodeFixProvider : CodeFixProvider
             newClassModifiers = classModifiers.Insert(insertIndex, SyntaxFactory.Token(SyntaxKind.PartialKeyword));
         }
 
-        var newClassDecl = classDecl.WithModifiers(newClassModifiers);
-
         var newFieldModifiers = SyntaxFactory.TokenList();
         newFieldModifiers = newFieldModifiers.Add(SyntaxFactory.Token(SyntaxKind.PrivateKeyword));
 
@@ -208,8 +203,11 @@ public class TrackableCodeFixProvider : CodeFixProvider
 
         var newFieldDecl = fieldDecl.WithModifiers(newFieldModifiers);
 
+        // 先在类内部替换字段，再替换整个类（同时添加 partial）
+        var newClassDecl = classDecl.ReplaceNode(fieldDecl, newFieldDecl);
+        newClassDecl = newClassDecl.WithModifiers(newClassModifiers);
+
         var newRoot = root.ReplaceNode(classDecl, newClassDecl);
-        newRoot = newRoot.ReplaceNode(fieldDecl, newFieldDecl);
 
         return document.WithSyntaxRoot(newRoot);
     }

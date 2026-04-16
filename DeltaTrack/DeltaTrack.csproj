@@ -15,12 +15,17 @@
         <RepositoryUrl>https://github.com/XBlueC/DeltaTrack</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <LangVersion>default</LangVersion>
+        <LangVersion>14</LangVersion>
         <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>packageIcon.png</PackageIcon>
     </PropertyGroup>
     <ItemGroup>
         <None Include="../README.md" Pack="true" PackagePath="\"/>
         <ProjectReference Include="..\Analyzers\Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
         <None Include="..\Analyzers\bin\$(Configuration)\netstandard2.0\Analyzers.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false"/>
+        <None Update="packageIcon.png">
+          <Pack>True</Pack>
+          <PackagePath></PackagePath>
+        </None>
     </ItemGroup>
 </Project>
