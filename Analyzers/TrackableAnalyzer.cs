@@ -29,18 +29,18 @@ public class TrackableAnalyzer : DiagnosticAnalyzer
         "This attribute is intended to be used only on private fields within partial classes."
     );
 
-    private static readonly DiagnosticDescriptor TooManyFieldsRule = new(
+    private static readonly DiagnosticDescriptor TrackIgnoreOutsideTrackableRule = new(
         "TRACK003",
-        "Too many trackable fields",
-        "Class '{0}' has {1} trackable fields, which exceeds the maximum of 64. DirtyFlag uses a 64-bit bitmask and cannot represent more than 64 fields",
+        "TrackIgnore is only effective on fields of [Trackable] classes",
+        "The 'TrackIgnore' attribute has no effect here; it is only meaningful on private fields of classes marked with [Trackable]",
         "Usage",
-        DiagnosticSeverity.Error,
+        DiagnosticSeverity.Warning,
         true,
-        "DeltaTrack uses a long (64-bit) bitmask for dirty flags. Reduce the number of tracked fields to 64 or fewer."
+        "TrackIgnore opts a private field out of the auto-tracking triggered by [Trackable]. On classes without [Trackable], private fields are not auto-tracked, so this attribute is a no-op."
     );
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-        ImmutableArray.Create(TrackableAttributeRule, TrackableFieldRule, TooManyFieldsRule);
+        ImmutableArray.Create(TrackableAttributeRule, TrackableFieldRule, TrackIgnoreOutsideTrackableRule);
 
     public override void Initialize(AnalysisContext context)
     {
@@ -58,58 +58,20 @@ public class TrackableAnalyzer : DiagnosticAnalyzer
             var hasAttribute = namedTypeSymbol.GetAttributes()
                 .Any(attr => attr.AttributeClass?.Name == "TrackableAttribute");
 
-            if (hasAttribute)
+            if (!hasAttribute) return;
+
+            var isPartial = namedTypeSymbol.DeclaringSyntaxReferences
+                .Any(refs =>
+                    refs.GetSyntax() is ClassDeclarationSyntax classSyntax
+                    && classSyntax.Modifiers.Any(m =>
+                        m.IsKind(SyntaxKind.PartialKeyword)));
+
+            if (!isPartial)
             {
-                var isPartial = namedTypeSymbol.DeclaringSyntaxReferences
-                    .Any(refs =>
-                        refs.GetSyntax() is ClassDeclarationSyntax classSyntax
-                        && classSyntax.Modifiers.Any(m =>
-                            m.IsKind(SyntaxKind.PartialKeyword)));
-
-                if (!isPartial)
-                {
-                    var location = namedTypeSymbol.Locations.FirstOrDefault() ?? Location.None;
-                    var diagnostic = Diagnostic.Create(TrackableAttributeRule, location);
-                    context.ReportDiagnostic(diagnostic);
-                }
-
-                // Check trackable field count <= 64
-                CheckTrackableFieldCount(context, namedTypeSymbol, true);
+                var location = namedTypeSymbol.Locations.FirstOrDefault() ?? Location.None;
+                var diagnostic = Diagnostic.Create(TrackableAttributeRule, location);
+                context.ReportDiagnostic(diagnostic);
             }
-            else
-            {
-                // Class without [Trackable] but may have [TrackableField] fields
-                CheckTrackableFieldCount(context, namedTypeSymbol, false);
-            }
-        }
-    }
-
-    private static void CheckTrackableFieldCount(SymbolAnalysisContext context, INamedTypeSymbol typeSymbol, bool hasTrackableAttribute)
-    {
-        var count = 0;
-        foreach (var member in typeSymbol.GetMembers())
-        {
-            if (member is not IFieldSymbol field)
-                continue;
-
-            var hasTrackableFieldAttr = field.GetAttributes()
-                .Any(a => a.AttributeClass?.Name == "TrackableFieldAttribute");
-
-            var hasTrackIgnoreAttr = field.GetAttributes()
-                .Any(a => a.AttributeClass?.Name == "TrackIgnoreAttribute");
-
-            if (hasTrackIgnoreAttr)
-                continue;
-
-            if (hasTrackableFieldAttr || (hasTrackableAttribute && field.DeclaredAccessibility == Accessibility.Private))
-                count++;
-        }
-
-        if (count > 64)
-        {
-            var location = typeSymbol.Locations.FirstOrDefault() ?? Location.None;
-            var diagnostic = Diagnostic.Create(TooManyFieldsRule, location, typeSymbol.Name, count);
-            context.ReportDiagnostic(diagnostic);
         }
     }
 
@@ -118,28 +80,43 @@ public class TrackableAnalyzer : DiagnosticAnalyzer
         if (context.Symbol is not IFieldSymbol fieldSymbol)
             return;
 
-        var hasTrackableFieldAttribute = fieldSymbol.GetAttributes()
-            .Any(attr => attr.AttributeClass?.Name == "TrackableFieldAttribute");
-
-        if (!hasTrackableFieldAttribute)
-            return;
-
+        var attributes = fieldSymbol.GetAttributes();
         var containingType = fieldSymbol.ContainingType;
         if (containingType == null)
             return;
 
-        var isPartialClass = containingType.DeclaringSyntaxReferences
-            .Any(refs =>
-                refs.GetSyntax() is ClassDeclarationSyntax classSyntax
-                && classSyntax.Modifiers.Any(m => m.IsKind(SyntaxKind.PartialKeyword)));
+        var hasTrackableFieldAttribute = attributes
+            .Any(attr => attr.AttributeClass?.Name == "TrackableFieldAttribute");
 
-        var isPrivate = fieldSymbol.DeclaredAccessibility == Accessibility.Private;
-
-        if (!isPartialClass || !isPrivate)
+        if (hasTrackableFieldAttribute)
         {
-            var location = fieldSymbol.Locations.FirstOrDefault() ?? Location.None;
-            var diagnostic = Diagnostic.Create(TrackableFieldRule, location);
-            context.ReportDiagnostic(diagnostic);
+            var isPartialClass = containingType.DeclaringSyntaxReferences
+                .Any(refs =>
+                    refs.GetSyntax() is ClassDeclarationSyntax classSyntax
+                    && classSyntax.Modifiers.Any(m => m.IsKind(SyntaxKind.PartialKeyword)));
+
+            var isPrivate = fieldSymbol.DeclaredAccessibility == Accessibility.Private;
+
+            if (!isPartialClass || !isPrivate)
+            {
+                var location = fieldSymbol.Locations.FirstOrDefault() ?? Location.None;
+                context.ReportDiagnostic(Diagnostic.Create(TrackableFieldRule, location));
+            }
+        }
+
+        var hasTrackIgnoreAttribute = attributes
+            .Any(attr => attr.AttributeClass?.Name == "TrackIgnoreAttribute");
+
+        if (hasTrackIgnoreAttribute)
+        {
+            var classHasTrackable = containingType.GetAttributes()
+                .Any(attr => attr.AttributeClass?.Name == "TrackableAttribute");
+
+            if (!classHasTrackable)
+            {
+                var location = fieldSymbol.Locations.FirstOrDefault() ?? Location.None;
+                context.ReportDiagnostic(Diagnostic.Create(TrackIgnoreOutsideTrackableRule, location));
+            }
         }
     }
 }

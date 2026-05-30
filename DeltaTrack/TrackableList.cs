@@ -1,57 +1,88 @@
-using System.Collections.ObjectModel;
+using System.Collections;
 
 namespace DeltaTrack;
 
-public class TrackableList<T> : Collection<T> where T : notnull
+public class TrackableList<T> : TrackableCollectionBase, IList<T> where T : notnull
 {
-    private readonly ChangeTracker _tracker;
-    private readonly Action _onChanged;
+    private readonly IList<T> _inner;
 
     public TrackableList(Action onChanged) : this(onChanged, new List<T>())
     {
     }
 
-    public TrackableList(Action onChanged, IList<T> initialItems) : base(initialItems)
+    public TrackableList(Action onChanged, IList<T> initialItems) : base(onChanged)
     {
-        _onChanged = onChanged ?? throw new ArgumentNullException(nameof(onChanged));
-        _tracker = new ChangeTracker();
-        _tracker.InitializeExistingItems(initialItems, _onChanged);
+        _inner = initialItems ?? throw new ArgumentNullException(nameof(initialItems));
+        InitializeExistingItems(_inner);
     }
 
-    protected override void InsertItem(int index, T item)
+    public T this[int index]
     {
-        base.InsertItem(index, item);
-        _tracker.HandleItemAdded(item, _onChanged);
-        _onChanged();
-    }
-
-    protected override void SetItem(int index, T item)
-    {
-        var oldItem = this[index];
-        base.SetItem(index, item);
-        _tracker.HandleItemRemoved(oldItem, _onChanged);
-        _tracker.HandleItemAdded(item, _onChanged);
-        _onChanged();
-    }
-
-    protected override void RemoveItem(int index)
-    {
-        var item = this[index];
-        base.RemoveItem(index);
-        _tracker.HandleItemRemoved(item, _onChanged);
-        _onChanged();
-    }
-
-    protected override void ClearItems()
-    {
-        if (Count == 0)
-            return;
-        for (int i = 0; i < Count; i++)
+        get => _inner[index];
+        set
         {
-            _tracker.HandleItemRemoved(this[i], _onChanged);
+            var old = _inner[index];
+            _inner[index] = value;
+            NotifyRemoved(old);
+            NotifyAdded(value);
+            RaiseChanged();
         }
-
-        base.ClearItems();
-        _onChanged();
     }
+
+    public int Count => _inner.Count;
+    public bool IsReadOnly => _inner.IsReadOnly;
+
+    public void Add(T item)
+    {
+        _inner.Add(item);
+        NotifyAdded(item);
+        RaiseChanged();
+    }
+
+    public void Insert(int index, T item)
+    {
+        _inner.Insert(index, item);
+        NotifyAdded(item);
+        RaiseChanged();
+    }
+
+    public bool Remove(T item)
+    {
+        var idx = _inner.IndexOf(item);
+        if (idx < 0) return false;
+
+        var removed = _inner[idx];
+        _inner.RemoveAt(idx);
+        NotifyRemoved(removed);
+        RaiseChanged();
+        return true;
+    }
+
+    public void RemoveAt(int index)
+    {
+        var item = _inner[index];
+        _inner.RemoveAt(index);
+        NotifyRemoved(item);
+        RaiseChanged();
+    }
+
+    public void Clear()
+    {
+        if (_inner.Count == 0) return;
+        var snapshot = new List<T>(_inner);
+        _inner.Clear();
+        foreach (var item in snapshot)
+            NotifyRemoved(item);
+        RaiseChanged();
+    }
+
+    public bool Contains(T item) => _inner.Contains(item);
+
+    public void CopyTo(T[] array, int arrayIndex) => _inner.CopyTo(array, arrayIndex);
+
+    public int IndexOf(T item) => _inner.IndexOf(item);
+
+    public IEnumerator<T> GetEnumerator() => _inner.GetEnumerator();
+
+    IEnumerator IEnumerable.GetEnumerator() => _inner.GetEnumerator();
 }

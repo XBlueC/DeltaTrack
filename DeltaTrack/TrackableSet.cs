@@ -2,89 +2,59 @@ using System.Collections;
 
 namespace DeltaTrack;
 
-public class TrackableSet<T> : ISet<T>
+public class TrackableSet<T> : TrackableCollectionBase, ISet<T>
 {
     private readonly ISet<T> _inner;
-    private readonly Action _onChanged;
-    private readonly ChangeTracker _tracker;
 
     public TrackableSet(Action onChanged) : this(onChanged, new HashSet<T>())
     {
     }
 
-    public TrackableSet(Action onChanged, ISet<T> inner)
+    public TrackableSet(Action onChanged, ISet<T> inner) : base(onChanged)
     {
-        _onChanged = onChanged ?? throw new ArgumentNullException(nameof(onChanged));
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-        _tracker = new ChangeTracker();
-        _tracker.InitializeExistingItems(_inner, _onChanged);
+        InitializeExistingItems(_inner);
     }
 
     public bool Add(T item)
     {
-        var added = _inner.Add(item);
-        if (added)
-        {
-            _tracker.HandleItemAdded(item, _onChanged);
-            _onChanged();
-        }
-
-        return added;
+        if (!_inner.Add(item)) return false;
+        NotifyAdded(item);
+        RaiseChanged();
+        return true;
     }
 
-    public void CopyTo(T[] array, int arrayIndex)
-    {
-        _inner.CopyTo(array, arrayIndex);
-    }
+    public void CopyTo(T[] array, int arrayIndex) => _inner.CopyTo(array, arrayIndex);
 
     public bool Remove(T item)
     {
-        var removed = _inner.Remove(item);
-        if (removed)
-        {
-            _tracker.HandleItemRemoved(item, _onChanged);
-            _onChanged();
-        }
-
-        return removed;
+        if (!_inner.Remove(item)) return false;
+        NotifyRemoved(item);
+        RaiseChanged();
+        return true;
     }
 
-    void ICollection<T>.Add(T item)
-    {
-        Add(item);
-    }
+    void ICollection<T>.Add(T item) => Add(item);
 
     public void Clear()
     {
-        if (_inner.Count > 0)
-        {
-            foreach (var item in _inner)
-            {
-                _tracker.HandleItemRemoved(item, _onChanged);
-            }
+        if (_inner.Count == 0) return;
 
-            _inner.Clear();
-            _onChanged();
-        }
+        var snapshot = new List<T>(_inner);
+        _inner.Clear();
+        foreach (var item in snapshot)
+            NotifyRemoved(item);
+        RaiseChanged();
     }
 
-    public bool Contains(T item)
-    {
-        return _inner.Contains(item);
-    }
+    public bool Contains(T item) => _inner.Contains(item);
 
     public int Count => _inner.Count;
     public bool IsReadOnly => false;
 
-    public IEnumerator<T> GetEnumerator()
-    {
-        return _inner.GetEnumerator();
-    }
+    public IEnumerator<T> GetEnumerator() => _inner.GetEnumerator();
 
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return GetEnumerator();
-    }
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     public void UnionWith(IEnumerable<T> other)
     {
@@ -93,14 +63,12 @@ public class TrackableSet<T> : ISet<T>
         var changed = false;
         foreach (var item in other)
         {
-            if (_inner.Add(item))
-            {
-                _tracker.HandleItemAdded(item, _onChanged);
-                changed = true;
-            }
+            if (!_inner.Add(item)) continue;
+            NotifyAdded(item);
+            changed = true;
         }
 
-        if (changed) _onChanged();
+        if (changed) RaiseChanged();
     }
 
     public void IntersectWith(IEnumerable<T> other)
@@ -109,23 +77,20 @@ public class TrackableSet<T> : ISet<T>
 
         var otherSet = other as ISet<T> ?? new HashSet<T>(other);
         var toRemove = new List<T>();
-
         foreach (var item in _inner)
         {
-            if (!otherSet.Contains(item))
-                toRemove.Add(item);
+            if (!otherSet.Contains(item)) toRemove.Add(item);
         }
 
-        if (toRemove.Count > 0)
+        if (toRemove.Count == 0) return;
+
+        foreach (var item in toRemove)
         {
-            foreach (var item in toRemove)
-            {
-                _inner.Remove(item);
-                _tracker.HandleItemRemoved(item, _onChanged);
-            }
-
-            _onChanged();
+            _inner.Remove(item);
+            NotifyRemoved(item);
         }
+
+        RaiseChanged();
     }
 
     public void ExceptWith(IEnumerable<T> other)
@@ -134,23 +99,20 @@ public class TrackableSet<T> : ISet<T>
 
         var otherSet = other as ISet<T> ?? new HashSet<T>(other);
         var toRemove = new List<T>();
-
         foreach (var item in _inner)
         {
-            if (otherSet.Contains(item))
-                toRemove.Add(item);
+            if (otherSet.Contains(item)) toRemove.Add(item);
         }
 
-        if (toRemove.Count > 0)
+        if (toRemove.Count == 0) return;
+
+        foreach (var item in toRemove)
         {
-            foreach (var item in toRemove)
-            {
-                _inner.Remove(item);
-                _tracker.HandleItemRemoved(item, _onChanged);
-            }
-
-            _onChanged();
+            _inner.Remove(item);
+            NotifyRemoved(item);
         }
+
+        RaiseChanged();
     }
 
     public void SymmetricExceptWith(IEnumerable<T> other)
@@ -163,52 +125,27 @@ public class TrackableSet<T> : ISet<T>
         var toRemove = currentSnapshot.Intersect(otherSet).ToList();
         var toAdd = otherSet.Except(currentSnapshot).ToList();
 
-        var changed = false;
+        if (toRemove.Count == 0 && toAdd.Count == 0) return;
 
         foreach (var item in toRemove)
         {
             _inner.Remove(item);
-            _tracker.HandleItemRemoved(item, _onChanged);
-            changed = true;
+            NotifyRemoved(item);
         }
 
         foreach (var item in toAdd)
         {
             _inner.Add(item);
-            _tracker.HandleItemAdded(item, _onChanged);
-            changed = true;
+            NotifyAdded(item);
         }
 
-        if (changed) _onChanged();
+        RaiseChanged();
     }
 
-    public bool IsSubsetOf(IEnumerable<T> other)
-    {
-        return _inner.IsSubsetOf(other);
-    }
-
-    public bool IsSupersetOf(IEnumerable<T> other)
-    {
-        return _inner.IsSupersetOf(other);
-    }
-
-    public bool IsProperSupersetOf(IEnumerable<T> other)
-    {
-        return _inner.IsProperSupersetOf(other);
-    }
-
-    public bool IsProperSubsetOf(IEnumerable<T> other)
-    {
-        return _inner.IsProperSubsetOf(other);
-    }
-
-    public bool Overlaps(IEnumerable<T> other)
-    {
-        return _inner.Overlaps(other);
-    }
-
-    public bool SetEquals(IEnumerable<T> other)
-    {
-        return _inner.SetEquals(other);
-    }
+    public bool IsSubsetOf(IEnumerable<T> other) => _inner.IsSubsetOf(other);
+    public bool IsSupersetOf(IEnumerable<T> other) => _inner.IsSupersetOf(other);
+    public bool IsProperSupersetOf(IEnumerable<T> other) => _inner.IsProperSupersetOf(other);
+    public bool IsProperSubsetOf(IEnumerable<T> other) => _inner.IsProperSubsetOf(other);
+    public bool Overlaps(IEnumerable<T> other) => _inner.Overlaps(other);
+    public bool SetEquals(IEnumerable<T> other) => _inner.SetEquals(other);
 }

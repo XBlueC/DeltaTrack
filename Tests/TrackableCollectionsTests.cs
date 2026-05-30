@@ -16,11 +16,11 @@ public class TrackableListTests
         // Arrange
         var changeCount = 0;
         var list = new TrackableList<string>(() => changeCount++);
-        
+
         // Act
         list.Add("Item1");
         list.Add("Item2");
-        
+
         // Assert
         Assert.Equal(2, list.Count);
         Assert.Equal(2, changeCount);
@@ -39,10 +39,10 @@ public class TrackableListTests
         var list = new TrackableList<string>(() => changeCount++);
         list.Add("Item1");
         list.Add("Item3");
-        
+
         // Act
         list.Insert(1, "Item2");
-        
+
         // Assert
         Assert.Equal(3, changeCount);
         Assert.Equal("Item2", list[1]);
@@ -59,10 +59,10 @@ public class TrackableListTests
         var list = new TrackableList<string>(() => changeCount++);
         list.Add("Item1");
         list.Add("Item2");
-        
+
         // Act
         list[0] = "NewItem1";
-        
+
         // Assert
         Assert.Equal(3, changeCount);
         Assert.Equal("NewItem1", list[0]);
@@ -79,13 +79,13 @@ public class TrackableListTests
         var list = new TrackableList<string>(() => changeCount++);
         list.Add("Item1");
         list.Add("Item2");
-        
+
         // Act
         list.RemoveAt(0);
-        
+
         // Assert
         Assert.Equal(3, changeCount);
-        Assert.Equal(1, list.Count);
+        Assert.Single(list);
         Assert.Equal("Item2", list[0]);
     }
 
@@ -100,13 +100,13 @@ public class TrackableListTests
         var list = new TrackableList<string>(() => changeCount++);
         list.Add("Item1");
         list.Add("Item2");
-        
+
         // Act
         list.Clear();
-        
+
         // Assert
         Assert.Equal(3, changeCount);
-        Assert.Equal(0, list.Count);
+        Assert.Empty(list);
     }
 
     /// <summary>
@@ -118,10 +118,10 @@ public class TrackableListTests
         // Arrange
         var initialItems = new List<string> { "Item1", "Item2", "Item3" };
         var changeCount = 0;
-        
+
         // Act
         var list = new TrackableList<string>(() => changeCount++, initialItems);
-        
+
         // Assert
         Assert.Equal(3, list.Count);
         Assert.Equal(0, changeCount); // 初始化不触发变更
@@ -145,11 +145,11 @@ public class TrackableDictionaryTests
         // Arrange
         var changeCount = 0;
         var dict = new TrackableDictionary<string, string>(() => changeCount++);
-        
+
         // Act
         dict.Add("Key1", "Value1");
         dict["Key2"] = "Value2";
-        
+
         // Assert
         Assert.Equal(2, dict.Count);
         Assert.Equal(2, changeCount);
@@ -167,10 +167,10 @@ public class TrackableDictionaryTests
         var changeCount = 0;
         var dict = new TrackableDictionary<string, string>(() => changeCount++);
         dict.Add("Key1", "Value1");
-        
+
         // Act
         dict["Key1"] = "NewValue1";
-        
+
         // Assert
         Assert.Equal(2, changeCount);
         Assert.Equal("NewValue1", dict["Key1"]);
@@ -187,14 +187,14 @@ public class TrackableDictionaryTests
         var dict = new TrackableDictionary<string, string>(() => changeCount++);
         dict.Add("Key1", "Value1");
         dict.Add("Key2", "Value2");
-        
+
         // Act
         var removed = dict.Remove("Key1");
-        
+
         // Assert
         Assert.True(removed);
         Assert.Equal(3, changeCount);
-        Assert.Equal(1, dict.Count);
+        Assert.Single(dict);
         Assert.False(dict.ContainsKey("Key1"));
     }
 
@@ -209,13 +209,13 @@ public class TrackableDictionaryTests
         var dict = new TrackableDictionary<string, string>(() => changeCount++);
         dict.Add("Key1", "Value1");
         dict.Add("Key2", "Value2");
-        
+
         // Act
         dict.Clear();
-        
+
         // Assert
         Assert.Equal(3, changeCount);
-        Assert.Equal(0, dict.Count);
+        Assert.Empty(dict);
     }
 
     /// <summary>
@@ -231,10 +231,10 @@ public class TrackableDictionaryTests
             ["Key2"] = "Value2"
         };
         var changeCount = 0;
-        
+
         // Act
         var dict = new TrackableDictionary<string, string>(() => changeCount++, initialData);
-        
+
         // Assert
         Assert.Equal(2, dict.Count);
         Assert.Equal(0, changeCount); // 初始化不触发变更
@@ -257,12 +257,12 @@ public class TrackableSetTests
         // Arrange
         var changeCount = 0;
         var set = new TrackableSet<int>(() => changeCount++);
-        
+
         // Act
         set.Add(1);
         set.Add(2);
         set.Add(1); // 重复添加
-        
+
         // Assert
         Assert.Equal(2, set.Count);
         Assert.Equal(2, changeCount); // 重复添加不触发变更
@@ -281,16 +281,16 @@ public class TrackableSetTests
         var set = new TrackableSet<int>(() => changeCount++);
         set.Add(1);
         set.Add(2);
-        
+
         // Act
         var removed = set.Remove(1);
         var notRemoved = set.Remove(3); // 不存在的元素
-        
+
         // Assert
         Assert.True(removed);
         Assert.False(notRemoved);
         Assert.Equal(3, changeCount);
-        Assert.Equal(1, set.Count);
+        Assert.Single(set);
         Assert.Contains(2, set);
     }
 
@@ -306,13 +306,13 @@ public class TrackableSetTests
         set.Add(1);
         set.Add(2);
         set.Add(3);
-        
+
         // Act
         set.Clear();
-        
+
         // Assert
         Assert.Equal(4, changeCount);
-        Assert.Equal(0, set.Count);
+        Assert.Empty(set);
     }
 
     /// <summary>
@@ -327,10 +327,10 @@ public class TrackableSetTests
         set.Add(1);
         set.Add(2);
         var other = new HashSet<int> { 2, 3, 4 };
-        
+
         // Act
         set.UnionWith(other);
-        
+
         // Assert
         Assert.Equal(3, changeCount); // 添加了3和4
         Assert.Equal(4, set.Count);
@@ -353,10 +353,10 @@ public class TrackableSetTests
         set.Add(2);
         set.Add(3);
         var other = new HashSet<int> { 2, 3, 4 };
-        
+
         // Act
         set.IntersectWith(other);
-        
+
         // Assert
         Assert.Equal(4, changeCount);
         Assert.Equal(2, set.Count);
@@ -377,10 +377,10 @@ public class TrackableSetTests
         set.Add(2);
         set.Add(3);
         var other = new HashSet<int> { 2, 4 };
-        
+
         // Act
         set.ExceptWith(other);
-        
+
         // Assert
         Assert.Equal(4, changeCount);
         Assert.Equal(2, set.Count);
@@ -401,10 +401,10 @@ public class TrackableSetTests
         set.Add(2);
         set.Add(3);
         var other = new HashSet<int> { 2, 3, 4, 5 };
-        
+
         // Act
         set.SymmetricExceptWith(other);
-        
+
         // Assert
         Assert.Equal(4, changeCount);
         Assert.Equal(3, set.Count);
@@ -422,10 +422,10 @@ public class TrackableSetTests
         // Arrange
         var initialItems = new HashSet<int> { 1, 2, 3 };
         var changeCount = 0;
-        
+
         // Act
         var set = new TrackableSet<int>(() => changeCount++, initialItems);
-        
+
         // Assert
         Assert.Equal(3, set.Count);
         Assert.Equal(0, changeCount); // 初始化不触发变更

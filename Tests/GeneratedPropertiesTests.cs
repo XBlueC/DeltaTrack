@@ -13,14 +13,14 @@ public class GeneratedPropertiesTests
     {
         // Arrange
         var model = new SimpleModel();
-        
+
         // Act & Assert
         Assert.False(model.HasChanges());
         Assert.Empty(model.GetChangedProperties());
-        
+
         // 测试属性设置
         model.Name = "Test Name";
-        
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("Name", model.GetChangedProperties());
@@ -35,12 +35,12 @@ public class GeneratedPropertiesTests
     {
         // Arrange
         var model = new SimpleModel();
-        
+
         // Act
         model.Name = "John Doe";
         model.Age = 30;
         model.IsActive = true;
-        
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("Name", model.GetChangedProperties());
@@ -57,10 +57,10 @@ public class GeneratedPropertiesTests
         // Arrange
         var model = new SimpleModel();
         model.Name = "Initial"; // 先设置初始值
-        
+
         // Act
         model.Name = "Initial"; // 设置相同值
-        
+
         // Assert
         Assert.Contains("Name", model.GetChangedProperties()); // 第一次设置会标记为脏
         // 注意：源生成器使用 EqualityComparer，默认情况下字符串比较是按值比较的
@@ -74,12 +74,12 @@ public class GeneratedPropertiesTests
     {
         // Arrange
         var model = new SimpleModel();
-        
+
         // Act
         model.Age = 25;
         model.BirthDate = new DateTime(1995, 1, 1);
         model.IsActive = true;
-        
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("Age", model.GetChangedProperties());
@@ -100,10 +100,10 @@ public class GeneratedPropertiesTests
         var model = new SimpleModel();
         model.Name = "Test";
         model.Age = 30;
-        
+
         // Act
         model.MarkClean();
-        
+
         // Assert
         Assert.False(model.HasChanges());
         Assert.Empty(model.GetChangedProperties());
@@ -117,15 +117,15 @@ public class GeneratedPropertiesTests
     {
         // Arrange
         var model = new SimpleModel();
-    
+
         // Act - 使用已知属性名
         model.MarkChanged("Name");
-    
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("Name", model.GetChangedProperties());
     }
-    
+
     /// <summary>
     /// 测试使用类型安全的 DirtyFlag 标记
     /// </summary>
@@ -134,10 +134,10 @@ public class GeneratedPropertiesTests
     {
         // Arrange
         var model = new SimpleModel();
-    
+
         // Act
         model.MarkChanged(SimpleModel.DirtyFlag.Name | SimpleModel.DirtyFlag.Age);
-    
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.True(model.GetDirtyFlags().HasFlag(SimpleModel.DirtyFlag.Name));
@@ -154,11 +154,11 @@ public class GeneratedPropertiesTests
     {
         // Arrange
         var model = new CollectionModel();
-        
+
         // Act
         model.Tags.Add("Tag1");
         model.Tags.Add("Tag2");
-        
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("Tags", model.GetChangedProperties());
@@ -174,11 +174,11 @@ public class GeneratedPropertiesTests
     {
         // Arrange
         var model = new CollectionModel();
-        
+
         // Act
         model.Metadata["Key1"] = "Value1";
         model.Metadata["Key2"] = "Value2";
-        
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("Metadata", model.GetChangedProperties());
@@ -194,12 +194,12 @@ public class GeneratedPropertiesTests
     {
         // Arrange
         var model = new CollectionModel();
-        
+
         // Act
         model.Numbers.Add(1);
         model.Numbers.Add(2);
         model.Numbers.Add(1); // 重复添加
-        
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("Numbers", model.GetChangedProperties());
@@ -216,12 +216,12 @@ public class GeneratedPropertiesTests
     {
         // Arrange
         var model = new CollectionModel();
-        
+
         // Act
         model.Tags.Add("Tag1");
         model.Metadata["Key1"] = "Value1";
         model.Numbers.Add(1);
-        
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("Tags", model.GetChangedProperties());
@@ -237,13 +237,13 @@ public class GeneratedPropertiesTests
     {
         // Arrange
         var model = new ComplexModel();
-        
+
         // Act
         model.Title = "Test Title";
         model.Categories.Add("Category1");
         model.PrimaryContact.Name = "Contact Name";
         model.Settings["Setting1"] = "Value1";
-        
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("Title", model.GetChangedProperties());
@@ -264,11 +264,11 @@ public class GeneratedPropertiesTests
     {
         // Arrange
         var model = new SimpleModel();
-        
+
         // Act
         model.Name = null;
         model.Name = null; // 再次设置null
-        
+
         // Assert
         // 源生成器应该正确处理null值的相等性比较
         Assert.Contains("Name", model.GetChangedProperties());
@@ -284,11 +284,11 @@ public class GeneratedPropertiesTests
         var model = new SimpleModel();
         var date1 = new DateTime(2023, 1, 1);
         var date2 = new DateTime(2023, 12, 31);
-        
+
         // Act
         model.BirthDate = date1;
         model.BirthDate = date2;
-        
+
         // Assert
         Assert.Equal(date2, model.BirthDate);
         Assert.Contains("BirthDate", model.GetChangedProperties());

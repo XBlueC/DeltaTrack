@@ -307,6 +307,7 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine("    {");
 
         AppendDirtyFlagEnum(sb, classInfo);
+        AppendFieldIndexConstants(sb, classInfo);
         AppendDirtyFlagNames(sb, classInfo);
         AppendTrackerProperty(sb, classInfo);
         AppendProperties(sb, classInfo);
@@ -335,6 +336,9 @@ public class TrackableGenerator : IIncrementalGenerator
 
     private static void AppendDirtyFlagEnum(StringBuilder sb, ClassInfo classInfo)
     {
+        // 字段数 > 64 时 [Flags] enum : long 已无法表达全部位，改由 FieldIndex 常量类承担
+        if (classInfo.Fields.Count > 64) return;
+
         sb.AppendLine("        [global::System.Flags]");
         sb.AppendLine("        public enum DirtyFlag : long");
         sb.AppendLine("        {");
@@ -343,6 +347,20 @@ public class TrackableGenerator : IIncrementalGenerator
         {
             var propName = ToPropertyName(classInfo.Fields[i].Name);
             sb.AppendLine($"            {propName} = 1L << {i},");
+        }
+
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    private static void AppendFieldIndexConstants(StringBuilder sb, ClassInfo classInfo)
+    {
+        sb.AppendLine("        public static class FieldIndex");
+        sb.AppendLine("        {");
+        for (var i = 0; i < classInfo.Fields.Count; i++)
+        {
+            var propName = ToPropertyName(classInfo.Fields[i].Name);
+            sb.AppendLine($"            public const int {propName} = {i};");
         }
 
         sb.AppendLine("        }");
@@ -359,13 +377,15 @@ public class TrackableGenerator : IIncrementalGenerator
     private static void AppendTrackerProperty(StringBuilder sb, ClassInfo classInfo)
     {
         var trackableFields = classInfo.Fields.Where(f => f.IsTrackable).ToList();
+        var slotCount = (classInfo.Fields.Count + 63) / 64;
+        if (slotCount < 1) slotCount = 1;
 
-        sb.AppendLine("        private global::DeltaTrack.ChangeTracker? _tracker;");
+        sb.AppendLine("        private global::DeltaTrack.ChangeTracker _tracker;");
         sb.AppendLine();
         sb.AppendLine("        private global::DeltaTrack.ChangeTracker GetTracker()");
         sb.AppendLine("        {");
         sb.AppendLine("            if (_tracker != null) return _tracker;");
-        sb.AppendLine("            var tracker = new global::DeltaTrack.ChangeTracker();");
+        sb.AppendLine($"            var tracker = new global::DeltaTrack.ChangeTracker({slotCount});");
         sb.AppendLine("            _tracker = tracker;");
         sb.AppendLine("            tracker.OnClean += MarkPropClean;");
         foreach (var field in trackableFields)
@@ -386,6 +406,14 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine("            add => GetTracker().OnChanged += value;");
         sb.AppendLine("            remove => GetTracker().OnChanged -= value;");
         sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        public event global::System.Action<global::DeltaTrack.ChangeInfo> OnChangedDetailed");
+        sb.AppendLine("        {");
+        sb.AppendLine("            add => GetTracker().OnChangedDetailed += value;");
+        sb.AppendLine("            remove => GetTracker().OnChangedDetailed -= value;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        public global::System.IDisposable SuspendTracking() => GetTracker().SuspendTracking();");
         sb.AppendLine();
     }
 
@@ -524,8 +552,10 @@ public class TrackableGenerator : IIncrementalGenerator
     {
         for (var i = 0; i < classInfo.Fields.Count; i++)
         {
+            var slot = i / 64;
+            var bit = i % 64;
             var propName = ToPropertyName(classInfo.Fields[i].Name);
-            sb.AppendLine($@"        private void On{propName}Changed() => GetTracker().MarkChanged(1L << {i});");
+            sb.AppendLine($@"        private void On{propName}Changed() => GetTracker().MarkChanged({slot}, 1L << {bit}, this);");
         }
 
         sb.AppendLine();
@@ -583,41 +613,97 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine("        }");
         sb.AppendLine();
 
-        // GetDirtyFlags()
-        sb.AppendLine("        public DirtyFlag GetDirtyFlags() => (DirtyFlag)GetTracker().DirtyFlags;");
-        sb.AppendLine();
+        if (classInfo.Fields.Count <= 64)
+        {
+            sb.AppendLine("        public DirtyFlag GetDirtyFlags() => (DirtyFlag)GetTracker().DirtyFlagsArray[0];");
+            sb.AppendLine();
+        }
 
-        // GetChangedProperties() - string-based for compatibility/debugging
         sb.AppendLine("        public global::System.Collections.Generic.IReadOnlyList<string> GetChangedProperties()");
         sb.AppendLine("        {");
-        sb.AppendLine("            var flags = GetTracker().DirtyFlags;");
-        sb.AppendLine("            if (flags == 0) return global::System.Array.Empty<string>();");
+        sb.AppendLine("            var tracker = GetTracker();");
+        sb.AppendLine("            if (!tracker.HasChanges()) return global::System.Array.Empty<string>();");
+        sb.AppendLine("            var slots = tracker.DirtyFlagsArray;");
         sb.AppendLine("            var result = new global::System.Collections.Generic.List<string>();");
         sb.AppendLine("            for (int i = 0; i < _dirtyFlagNames.Length; i++)");
         sb.AppendLine("            {");
-        sb.AppendLine("                if ((flags & (1L << i)) != 0)");
+        sb.AppendLine("                if ((slots[i >> 6] & (1L << (i & 63))) != 0)");
         sb.AppendLine("                    result.Add(_dirtyFlagNames[i]);");
         sb.AppendLine("            }");
         sb.AppendLine("            return result;");
         sb.AppendLine("        }");
         sb.AppendLine();
 
-        // MarkChanged(DirtyFlag) - type-safe
-        sb.AppendLine("        public void MarkChanged(DirtyFlag flag)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            GetTracker().MarkChanged((long)flag);");
-        sb.AppendLine("        }");
-        sb.AppendLine();
+        if (classInfo.Fields.Count <= 64)
+        {
+            sb.AppendLine("        public void MarkChanged(DirtyFlag flag)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            GetTracker().MarkChanged(0, (long)flag);");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+        }
 
-        // MarkChanged(string) - string-based for compatibility
         sb.AppendLine("        public void MarkChanged(string property)");
         sb.AppendLine("        {");
         sb.AppendLine("            for (int i = 0; i < _dirtyFlagNames.Length; i++)");
         sb.AppendLine("            {");
         sb.AppendLine("                if (_dirtyFlagNames[i] == property)");
         sb.AppendLine("                {");
-        sb.AppendLine("                    GetTracker().MarkChanged(1L << i);");
+        sb.AppendLine("                    GetTracker().MarkChanged(i >> 6, 1L << (i & 63));");
         sb.AppendLine("                    return;");
+        sb.AppendLine("                }");
+        sb.AppendLine("            }");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+
+        AppendDeltaMethods(sb, classInfo);
+    }
+
+    private static void AppendDeltaMethods(StringBuilder sb, ClassInfo classInfo)
+    {
+        sb.AppendLine("        public global::System.Collections.Generic.IReadOnlyDictionary<string, object> GetDelta()");
+        sb.AppendLine("        {");
+        sb.AppendLine("            var tracker = GetTracker();");
+        sb.AppendLine("            if (!tracker.HasChanges()) return new global::System.Collections.Generic.Dictionary<string, object>(0);");
+        sb.AppendLine("            var slots = tracker.DirtyFlagsArray;");
+        sb.AppendLine("            var result = new global::System.Collections.Generic.Dictionary<string, object>();");
+        for (var i = 0; i < classInfo.Fields.Count; i++)
+        {
+            var slot = i / 64;
+            var bit = i % 64;
+            var propName = ToPropertyName(classInfo.Fields[i].Name);
+            sb.AppendLine($"            if ((slots[{slot}] & (1L << {bit})) != 0) result[\"{propName}\"] = (object){propName};");
+        }
+
+        sb.AppendLine("            return result;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+
+        sb.AppendLine("        public void ApplyDelta(global::System.Collections.Generic.IReadOnlyDictionary<string, object> delta)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (delta == null) return;");
+        sb.AppendLine("            foreach (var kvp in delta)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                switch (kvp.Key)");
+        sb.AppendLine("                {");
+        foreach (var field in classInfo.Fields)
+        {
+            var propName = ToPropertyName(field.Name);
+            string castExpr;
+            if (field.IsCollection &&
+                field.TypeSymbol is INamedTypeSymbol named &&
+                TryGetCollectionWrapperType(named, out _, out var interfaceName))
+            {
+                castExpr = $"global::DeltaTrack.ChangeTracker.DeltaCast<{interfaceName}>(kvp.Value)";
+            }
+            else
+            {
+                castExpr = $"global::DeltaTrack.ChangeTracker.DeltaCast<{field.Type}>(kvp.Value)";
+            }
+
+            sb.AppendLine($"                    case \"{propName}\": {propName} = {castExpr}; break;");
+        }
+
         sb.AppendLine("                }");
         sb.AppendLine("            }");
         sb.AppendLine("        }");

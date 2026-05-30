@@ -133,6 +133,73 @@ order.OnChanged += () => Console.WriteLine("Changed!");
 order.OnChanged -= handler;  // Manual unsubscribe
 ```
 
+### Detailed Change Events (with `ChangeInfo`)
+
+For scenarios that need to know **which** flags were just dirtied and **which** object emitted the change, subscribe to `OnChangedDetailed`:
+
+```csharp
+order.OnChangedDetailed += info =>
+{
+    // info.DirtyFlags : the bits set by THIS MarkChanged call (incremental)
+    // info.Source     : the ITrackable that emitted the change (= self)
+    var flag = (Order.DirtyFlag)info.DirtyFlags;
+    Console.WriteLine($"{info.Source.GetType().Name} changed: {flag}");
+};
+```
+
+`OnChangedDetailed` fires alongside `OnChanged`. The `Source` is always the object whose field setter was invoked; nested-object changes propagate as a dirty bit on the parent's reference field.
+
+### Suspend Tracking (batch / replay / deserialization)
+
+Wrap any block in `SuspendTracking()` to perform assignments **without** producing dirty flags or firing events:
+
+```csharp
+using (order.SuspendTracking())
+{
+    order.CustomerName = "...";
+    order.Amount       = 100;
+    order.Address      = new Address { City = "NY" };
+}
+
+order.HasChanges();   // False  — block is fully transparent to tracking
+```
+
+Nested and reentrant: each `Dispose()` decrements the suspend counter; tracking only resumes when the outermost scope exits.
+
+### Delta Export / Apply
+
+Each trackable class auto-generates `GetDelta()` (returns only dirty fields) and `ApplyDelta()` (bulk write-back). Ideal for incremental network sync, audit logs and database UPDATEs.
+
+```csharp
+order.CustomerName = "Alice";
+order.Amount       = 99.5m;
+
+IReadOnlyDictionary<string, object> delta = order.GetDelta();
+// { "CustomerName": "Alice", "Amount": 99.5 }
+
+// Send `delta` over the wire / persist it / log it ...
+order.MarkClean();
+
+// On the receiver:
+var received = new Order();
+using (received.SuspendTracking())     // optional: keep receiver clean
+{
+    received.ApplyDelta(delta);
+}
+```
+
+Notes:
+
+- `GetDelta()` returns nested objects and collections **by reference** — recurse into them yourself if you need deep diffs.
+- `ApplyDelta()` ignores keys not matching any property. Each value is coerced via `ChangeTracker.DeltaCast<T>`, which handles in order:
+    1. **Identity / inheritance** — same type or derived-to-base assignments pass through directly (zero overhead).
+    2. **Enums** — `int` / `long` / `string` round-trip to any `enum` (including `[Flags]` combinations) via `Enum.ToObject` / `Enum.Parse`.
+    3. **`IConvertible`** — primitives, `string`, `decimal`, `DateTime`, `bool`, `char` are coerced via `Convert.ChangeType` (`InvariantCulture`), friendly for JSON deserialisers that widen all
+       integers to `long`.
+    4. **`Nullable<T>`** — automatically unwrapped + rewrapped; works for **any** underlying value type (including non-`IConvertible` user structs, `Guid`, `TimeSpan`).
+- Failed conversions throw `InvalidCastException` / `OverflowException` / `ArgumentException` — these are deliberately **not swallowed**, so callers can detect malformed payloads at the field
+  boundary.
+
 ## Attributes
 
 ### `[Trackable]`
@@ -307,10 +374,21 @@ The sole public contract for consumers. All generated trackable classes implemen
 ```csharp
 public interface ITrackable
 {
-    bool HasChanges();                              // Whether there are changes
-    IReadOnlyList<string> GetChangedProperties();   // List of changed properties
-    void MarkClean(bool recursive = false);         // Clear change records
-    event Action OnChanged;                         // Triggered when changed
+    bool HasChanges();                                                  // Whether there are changes
+    IReadOnlyList<string> GetChangedProperties();                       // List of changed properties
+    void MarkClean(bool recursive = false);                             // Clear change records
+    event Action OnChanged;                                             // Fires on every change
+    event Action<ChangeInfo> OnChangedDetailed;                         // Fires with dirty-flag + source metadata
+    IDisposable SuspendTracking();                                      // Block-scoped tracking pause (nestable)
+    IReadOnlyDictionary<string, object> GetDelta();                     // Snapshot of currently dirty fields
+    void ApplyDelta(IReadOnlyDictionary<string, object> delta);         // Bulk write-back
+}
+
+public readonly struct ChangeInfo
+{
+    public int Slot { get; }         // Which 64-bit slot the change landed in (0 unless the class has > 64 fields)
+    public long DirtyFlags { get; }   // Incremental bits set by THIS MarkChanged call (within Slot)
+    public ITrackable Source { get; } // Object that emitted the change (always self)
 }
 ```
 
@@ -319,7 +397,7 @@ public interface ITrackable
 In addition to `ITrackable`, the generator produces these members on each trackable class:
 
 ```csharp
-// Type-safe dirty flag enum
+// Type-safe dirty flag enum (only generated when the class has ≤ 64 tracked fields)
 [Flags]
 public enum DirtyFlag : long
 {
@@ -328,15 +406,35 @@ public enum DirtyFlag : long
     // ... one flag per tracked field
 }
 
-// Get current dirty flags
+// Stable 0..N-1 index per field, always generated. The only type-safe accessor when there are > 64 fields.
+public static class FieldIndex
+{
+    public const int Name = 0;
+    public const int Age  = 1;
+    // ... one constant per tracked field
+}
+
+// Get current dirty flags (≤ 64 fields only)
 DirtyFlag GetDirtyFlags();
 
-// Mark fields as changed using type-safe flags
+// Mark fields as changed using type-safe flags (≤ 64 fields only)
 void MarkChanged(DirtyFlag flags);
 
-// Mark field as changed by name
+// Mark field as changed by name (works for any field count)
 void MarkChanged(string propertyName);
 ```
+
+### Wide Models (more than 64 tracked fields)
+
+There is **no upper bound** on the number of tracked fields per class. The generator picks one of two layouts:
+
+| Field count | Storage                           | Per-class API                                                                |
+|-------------|-----------------------------------|------------------------------------------------------------------------------|
+| ≤ 64        | single `long` slot                | `[Flags] enum DirtyFlag : long`, `GetDirtyFlags()`, `MarkChanged(DirtyFlag)` |
+| &gt; 64     | `long[]` slots, one per 64 fields | `FieldIndex` constants only (no `DirtyFlag` enum / no `GetDirtyFlags`)       |
+
+The storage difference is internal — every other API (`HasChanges()`, `GetChangedProperties()`, `OnChanged`, `OnChangedDetailed`, `GetDelta()` / `ApplyDelta()`, `MarkChanged(string)`,
+`SuspendTracking()`, `MarkClean()`) behaves identically. `ChangeInfo.Slot` lets detailed subscribers tell which 64-bit window a change came from.
 
 ### Extension Methods
 
@@ -362,11 +460,11 @@ using var sub = order.SubscribeToChanges(() => Console.WriteLine("Changed!"));
 
 DeltaTrack includes compile-time analyzers to catch issues early:
 
-| Code    | Severity | Description                                        |
-|---------|----------|----------------------------------------------------|
-| TRACK001 | Error   | Trackable class must be declared as `partial`       |
-| TRACK002 | Error   | `[TrackableField]` must be on a private field       |
-| TRACK003 | Error   | Trackable class exceeds 64 tracked fields (bitflag limit) |
+| Code     | Severity | Description                                                          |
+|----------|----------|----------------------------------------------------------------------|
+| TRACK001 | Error    | `[Trackable]` class must be declared as `partial`                    |
+| TRACK002 | Error    | `[TrackableField]` must be on a private field of a `partial` class   |
+| TRACK003 | Warning  | `[TrackIgnore]` only takes effect on fields of `[Trackable]` classes |
 
 ## Use Cases
 
@@ -380,16 +478,40 @@ DeltaTrack includes compile-time analyzers to catch issues early:
 | UI Binding          | `SubscribeToChanges()` to notify UI refresh                    |
 | Distributed Systems | Precisely propagate changes to other nodes                     |
 
+## Thread Safety
+
+**DeltaTrack is single-threaded by design.** A trackable instance and any object graph reachable from it (nested trackables, `TrackableList<T>` / `TrackableSet<T>` / `TrackableDictionary<TKey,TValue>`
+wrappers, attached event handlers) must be accessed from a single thread at a time.
+
+The internals deliberately avoid locks for performance:
+
+- Dirty flags (`long`) are written/read without `Interlocked` — cross-thread updates may be lost or torn.
+- `OnChanged` / `OnChangedDetailed` event handlers are invoked **synchronously and re-entrantly** on the calling thread; throwing or mutating the same object inside a handler will recurse.
+- `SuspendTracking()` / `MarkClean()` change global state of the tracker and are not safe under contention.
+- Subscription bookkeeping (`Dictionary<ITrackable, ...>`) is not concurrent.
+
+If you need to mutate a trackable graph from multiple threads, serialize access externally (e.g. an actor / dispatcher / `lock`). Read-only inspection (`HasChanges`, `GetChangedProperties`,
+`GetDelta`) from another thread also requires the same external synchronization.
+
+Typical safe patterns:
+
+- Game servers: own each entity from one logic tick / actor.
+- UI frameworks: mutate on the UI thread; marshal background work back via `SynchronizationContext`.
+- Web servers: instances scoped per request.
+
 ## Technical Features
 
 - **Compile-time Generation** - Based on Roslyn Source Generator, no runtime overhead
 - **Zero Intrusion** - Only add attributes, no business code modification
 - **Zero Reflection** - Generated code calls directly, excellent performance
 - **Zero GC Dirty Tracking** - Uses `long` bitflag instead of `HashSet<string>`, no allocations on change
-- **Type-Safe Flags** - Generated `[Flags] enum DirtyFlag : long` per class for compile-time checked operations
+- **Type-Safe Flags** - Generated `[Flags] enum DirtyFlag : long` per class for compile-time checked operations (auto-falls back to `FieldIndex` constants when a class has more than 64 tracked fields)
+- **Detailed Change Events** - `OnChangedDetailed` carries the exact dirty bits + emitting source for fine-grained subscribers
+- **Suspendable Tracking** - `SuspendTracking()` block disables dirty marking for batch loads / deserialization / replay
+- **Delta Export & Apply** - `GetDelta()` / `ApplyDelta()` enable incremental network sync, audit logs, and minimal DB updates
 - **Smart Reference Counting** - Correctly manages subscriptions when same object referenced multiple places, prevents memory leaks
 - **Nested Tracking** - Auto-tracks nested objects and trackable elements in collections
-- **Compile-time Diagnostics** - Analyzer catches common mistakes (non-partial class, >64 fields, etc.)
+- **Compile-time Diagnostics** - Analyzer catches common mistakes (non-partial class, misplaced `[TrackableField]`, etc.)
 
 ## License
 

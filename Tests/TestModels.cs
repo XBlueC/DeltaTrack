@@ -1,5 +1,9 @@
 using DeltaTrack;
 
+// [TrackIgnore] 标记的字段会被源生成器跳过，运行时既不读也不写——
+// 因此 CS0169（从未使用）/ CS0414（赋值但未使用）在测试模型里是预期行为。
+#pragma warning disable CS0169, CS0414
+
 namespace Tests;
 
 /// <summary>
@@ -114,4 +118,81 @@ public partial class MixedTrackableCollectionsModel
     [TrackableField] private List<SimpleModel> _trackableList = new();
     [TrackableField] private Dictionary<string, SimpleModel> _trackableDict = new();
     [TrackableField] private SimpleModel _directChild = new();
+}
+
+/// <summary>
+/// 65 字段模型 —— 验证 long[] 多 slot 分级路径（>64 字段时不再生成 DirtyFlag enum，
+/// 改走 FieldIndex 常量类 + 多 slot MarkChanged）
+/// </summary>
+[Trackable]
+public partial class WideModel
+{
+    [TrackableField] private int _f00;
+    [TrackableField] private int _f01;
+    [TrackableField] private int _f02;
+    [TrackableField] private int _f03;
+    [TrackableField] private int _f04;
+    [TrackableField] private int _f05;
+    [TrackableField] private int _f06;
+    [TrackableField] private int _f07;
+    [TrackableField] private int _f08;
+    [TrackableField] private int _f09;
+    [TrackableField] private int _f10;
+    [TrackableField] private int _f11;
+    [TrackableField] private int _f12;
+    [TrackableField] private int _f13;
+    [TrackableField] private int _f14;
+    [TrackableField] private int _f15;
+    [TrackableField] private int _f16;
+    [TrackableField] private int _f17;
+    [TrackableField] private int _f18;
+    [TrackableField] private int _f19;
+    [TrackableField] private int _f20;
+    [TrackableField] private int _f21;
+    [TrackableField] private int _f22;
+    [TrackableField] private int _f23;
+    [TrackableField] private int _f24;
+    [TrackableField] private int _f25;
+    [TrackableField] private int _f26;
+    [TrackableField] private int _f27;
+    [TrackableField] private int _f28;
+    [TrackableField] private int _f29;
+    [TrackableField] private int _f30;
+    [TrackableField] private int _f31;
+    [TrackableField] private int _f32;
+    [TrackableField] private int _f33;
+    [TrackableField] private int _f34;
+    [TrackableField] private int _f35;
+    [TrackableField] private int _f36;
+    [TrackableField] private int _f37;
+    [TrackableField] private int _f38;
+    [TrackableField] private int _f39;
+    [TrackableField] private int _f40;
+    [TrackableField] private int _f41;
+    [TrackableField] private int _f42;
+    [TrackableField] private int _f43;
+    [TrackableField] private int _f44;
+    [TrackableField] private int _f45;
+    [TrackableField] private int _f46;
+    [TrackableField] private int _f47;
+    [TrackableField] private int _f48;
+    [TrackableField] private int _f49;
+    [TrackableField] private int _f50;
+    [TrackableField] private int _f51;
+    [TrackableField] private int _f52;
+    [TrackableField] private int _f53;
+    [TrackableField] private int _f54;
+    [TrackableField] private int _f55;
+    [TrackableField] private int _f56;
+    [TrackableField] private int _f57;
+    [TrackableField] private int _f58;
+    [TrackableField] private int _f59;
+    [TrackableField] private int _f60;
+    [TrackableField] private int _f61;
+    [TrackableField] private int _f62;
+
+    [TrackableField] private int _f63;
+
+    // 第 65 个字段：跨入 slot 1
+    [TrackableField] private int _f64;
 }

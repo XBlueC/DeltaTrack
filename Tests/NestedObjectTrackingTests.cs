@@ -13,11 +13,11 @@ public class NestedObjectTrackingTests
     {
         // Arrange
         var model = new NestedModel();
-        
+
         // Act
         model.Child.Name = "Child Name";
         model.Child.Age = 10;
-        
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("Child", model.GetChangedProperties());
@@ -36,18 +36,18 @@ public class NestedObjectTrackingTests
         var model = new NestedModel();
         var child1 = new SimpleModel();
         var child2 = new SimpleModel();
-        
+
         // Act
         model.Children.Add(child1);
         model.Children.Add(child2);
         child1.Name = "First Child";
         child2.Age = 5;
-        
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("Children", model.GetChangedProperties());
         Assert.Equal(2, model.Children.Count);
-        
+
         // 验证子对象的脏状态
         Assert.True(child1.HasChanges());
         Assert.Contains("Name", child1.GetChangedProperties());
@@ -65,19 +65,19 @@ public class NestedObjectTrackingTests
         var model = new NestedModel();
         var child1 = new SimpleModel();
         var child2 = new SimpleModel();
-        
+
         // Act
         model.NamedChildren["first"] = child1;
         model.NamedChildren["second"] = child2;
         child1.Name = "First Named Child";
         child2.IsActive = true;
-        
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("NamedChildren", model.GetChangedProperties());
         Assert.True(model.NamedChildren.ContainsKey("first"));
         Assert.True(model.NamedChildren.ContainsKey("second"));
-        
+
         // 验证子对象的脏状态
         Assert.True(child1.HasChanges());
         Assert.Contains("Name", child1.GetChangedProperties());
@@ -95,22 +95,22 @@ public class NestedObjectTrackingTests
         var model = new ComplexModel();
         var section = new NestedModel();
         var child = new SimpleModel();
-        
+
         // Act
         model.Title = "Main Title";
         model.Sections["main"] = section;
         section.Children.Add(child);
         child.Name = "Deep Nested Child";
         child.Age = 15;
-        
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("Title", model.GetChangedProperties());
         Assert.Contains("Sections", model.GetChangedProperties());
-        
+
         Assert.True(section.HasChanges());
         Assert.Contains("Children", section.GetChangedProperties());
-        
+
         Assert.True(child.HasChanges());
         Assert.Contains("Name", child.GetChangedProperties());
         Assert.Contains("Age", child.GetChangedProperties());
@@ -126,18 +126,18 @@ public class NestedObjectTrackingTests
         var model = new NestedModel();
         var oldChild = new SimpleModel();
         var newChild = new SimpleModel();
-        
+
         model.Child = oldChild;
         oldChild.Name = "Old Child";
-        
+
         // Act
         model.Child = newChild;
         newChild.Age = 20;
-        
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("Child", model.GetChangedProperties());
-        
+
         // 验证新旧对象的状态
         Assert.True(oldChild.HasChanges()); // 仍然保持脏状态
         Assert.True(newChild.HasChanges());
@@ -153,15 +153,15 @@ public class NestedObjectTrackingTests
         // Arrange
         var model = new NestedModel();
         var child = new SimpleModel();
-        
+
         // Act
         model.Children.Add(child);
         child.Name = "Nested Collection Child";
-        
+
         // 然后从集合中移除
         model.Children.RemoveAt(0);
         child.Age = 25; // 即使移除了也应该还能跟踪
-        
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("Children", model.GetChangedProperties());
@@ -181,13 +181,13 @@ public class NestedObjectTrackingTests
         var child = new SimpleModel();
         model.Child = child;
         model.Children.Add(child);
-        
+
         child.Name = "Test Child";
         child.Age = 30;
-        
+
         // Act
         model.MarkClean(recursive: true);
-        
+
         // Assert
         Assert.False(model.HasChanges());
         Assert.Empty(model.GetChangedProperties());
@@ -206,10 +206,10 @@ public class NestedObjectTrackingTests
         var child = new SimpleModel();
         model.Child = child;
         child.Name = "Test Child";
-        
+
         // Act
         model.MarkClean(recursive: false); // 只清理自身
-        
+
         // Assert
         Assert.False(model.HasChanges());
         Assert.Empty(model.GetChangedProperties());
@@ -228,24 +228,24 @@ public class NestedObjectTrackingTests
         var topLevel = new ComplexModel();
         var section = new NestedModel();
         var child = new SimpleModel();
-        
+
         topLevel.Sections["test"] = section;
         section.Children.Add(child);
-        
+
         // Act - 分别修改不同层级
         topLevel.Title = "Top Level";
         section.Child.Name = "Section Child";
         child.Age = 25;
-        
+
         // Assert - 各层级独立跟踪
         Assert.True(topLevel.HasChanges());
         Assert.Contains("Title", topLevel.GetChangedProperties());
         Assert.Contains("Sections", topLevel.GetChangedProperties());
-        
+
         Assert.True(section.HasChanges());
         Assert.Contains("Child", section.GetChangedProperties());
         Assert.Contains("Children", section.GetChangedProperties());
-        
+
         Assert.True(child.HasChanges());
         Assert.Contains("Age", child.GetChangedProperties());
     }
@@ -259,7 +259,7 @@ public class NestedObjectTrackingTests
         // Arrange & Act
         var model = new NestedModel();
         var child = new SimpleModel();
-        
+
         // Assert
         Assert.False(model.HasChanges());
         Assert.Empty(model.GetChangedProperties());
@@ -277,25 +277,25 @@ public class NestedObjectTrackingTests
         var model = new ComplexModel();
         var contact = new SimpleModel();
         var section = new NestedModel();
-        
+
         // Act
         model.PrimaryContact = contact;
         contact.Name = "Primary Contact";
-        
+
         model.Sections["main"] = section;
         section.Child = contact; // 同一个对象在不同位置使用
-        
+
         model.Categories.Add("Category1");
-        
+
         // Assert
         Assert.True(model.HasChanges());
         Assert.Contains("PrimaryContact", model.GetChangedProperties());
         Assert.Contains("Sections", model.GetChangedProperties());
         Assert.Contains("Categories", model.GetChangedProperties());
-        
+
         Assert.True(contact.HasChanges());
         Assert.Contains("Name", contact.GetChangedProperties());
-        
+
         Assert.True(section.HasChanges());
         Assert.Contains("Child", section.GetChangedProperties());
     }
