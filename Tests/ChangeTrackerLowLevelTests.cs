@@ -450,6 +450,73 @@ public class ChangeTrackerLowLevelTests
             ChangeTracker.DeltaCast<Guid>("00000000-0000-0000-0000-000000000001"));
     }
 
+    [Fact]
+    public void DeltaCast_DateTime_To_Long_Throws()
+    {
+        // Convert.ChangeType 不支持 DateTime → long，抛 InvalidCastException
+        // 实际使用中 DateTime 字段存的就是 DateTime，命中快路径
+        var dt = new DateTime(2025, 6, 9, 12, 0, 0);
+        Assert.Throws<InvalidCastException>(() => ChangeTracker.DeltaCast<long>(dt));
+    }
+
+    [Fact]
+    public void DeltaCast_DateTime_To_String()
+    {
+        // DateTime → string 走 Convert.ChangeType，受 InvariantCulture 格式化
+        var dt = new DateTime(2025, 6, 9, 12, 0, 0);
+        var actual = ChangeTracker.DeltaCast<string>(dt);
+        Assert.NotNull(actual);
+        Assert.Contains("2025", actual);
+    }
+
+    [Fact]
+    public void DeltaCast_Long_To_DateTime_Throws()
+    {
+        // long 是 IConvertible，但 DateTime 不是 Convert.ChangeType 支持的目标类型
+        // 实际使用中序列化器会直接还原为 DateTime 实例，命中快路径
+        Assert.Throws<InvalidCastException>(() =>
+            ChangeTracker.DeltaCast<DateTime>(638846784000000000L));
+    }
+
+    [Fact]
+    public void DeltaCast_String_To_TimeSpan_Throws()
+    {
+        // TimeSpan 不实现 IConvertible，Convert.ChangeType 无法转换
+        Assert.Throws<InvalidCastException>(() =>
+            ChangeTracker.DeltaCast<TimeSpan>("00:15:00"));
+    }
+
+    [Fact]
+    public void DeltaCast_TimeSpan_To_String_Throws()
+    {
+        // TimeSpan 不实现 IConvertible，走 fallback (T)value
+        Assert.Throws<InvalidCastException>(() =>
+            ChangeTracker.DeltaCast<string>(TimeSpan.FromMinutes(15)));
+    }
+
+    [Fact]
+    public void DeltaCast_Float_To_Int()
+    {
+        // float 是 IConvertible，Convert.ChangeType 使用银行家舍入（3.7f → 4）
+        Assert.Equal(4, ChangeTracker.DeltaCast<int>(3.7f));
+    }
+
+    [Fact]
+    public void DeltaCast_Char_To_Int()
+    {
+        // char 是 IConvertible，Convert.ChangeType 返回 Unicode 码点
+        Assert.Equal(65, ChangeTracker.DeltaCast<int>('A'));
+    }
+
+    [Fact]
+    public void DeltaCast_Nullable_DateTime_From_String()
+    {
+        // Nullable<DateTime>：underlying = DateTime，string 走 Convert.ChangeType
+        var actual = ChangeTracker.DeltaCast<DateTime?>("2025-06-09T12:00:00");
+        Assert.True(actual.HasValue);
+        Assert.Equal(new DateTime(2025, 6, 9, 12, 0, 0), actual.Value);
+    }
+
     // ---- Dispose ----
 
     [Fact]

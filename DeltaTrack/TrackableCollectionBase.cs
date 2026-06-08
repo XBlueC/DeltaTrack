@@ -2,7 +2,7 @@ using System.Collections;
 
 namespace DeltaTrack;
 
-public abstract class TrackableCollectionBase(Action onChanged)
+public abstract class TrackableCollectionBase(Action onChanged) : IDisposable
 {
     protected readonly ChangeTracker Tracker = new(1);
 
@@ -15,4 +15,6 @@ public abstract class TrackableCollectionBase(Action onChanged)
     protected void RaiseChanged() => OnChangedCallback();
 
     protected void InitializeExistingItems(IEnumerable items) => Tracker.InitializeExistingItems(items, OnChangedCallback);
+
+    public virtual void Dispose() => Tracker.Dispose();
 }

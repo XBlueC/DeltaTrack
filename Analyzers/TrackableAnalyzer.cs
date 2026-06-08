@@ -39,8 +39,18 @@ public class TrackableAnalyzer : DiagnosticAnalyzer
         "TrackIgnore opts a private field out of the auto-tracking triggered by [Trackable]. On classes without [Trackable], private fields are not auto-tracked, so this attribute is a no-op."
     );
 
+    private static readonly DiagnosticDescriptor TrackableOnInvalidTypeRule = new(
+        "TRACK004",
+        "Trackable can only be applied to non-static partial classes",
+        "The 'Trackable' attribute can only be applied to non-static partial classes, not on structs or static classes",
+        "Usage",
+        DiagnosticSeverity.Error,
+        true,
+        "Trackable generates instance tracking code which requires a non-static partial class."
+    );
+
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-        ImmutableArray.Create(TrackableAttributeRule, TrackableFieldRule, TrackIgnoreOutsideTrackableRule);
+        ImmutableArray.Create(TrackableAttributeRule, TrackableFieldRule, TrackIgnoreOutsideTrackableRule, TrackableOnInvalidTypeRule);
 
     public override void Initialize(AnalysisContext context)
     {
@@ -52,26 +62,36 @@ public class TrackableAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeNamedType(SymbolAnalysisContext context)
     {
-        if (context.Symbol is INamedTypeSymbol namedTypeSymbol &&
-            namedTypeSymbol.TypeKind == TypeKind.Class)
+        if (context.Symbol is not INamedTypeSymbol namedTypeSymbol)
+            return;
+
+        var hasAttribute = namedTypeSymbol.GetAttributes()
+            .Any(attr => attr.AttributeClass?.Name == "TrackableAttribute");
+
+        if (!hasAttribute) return;
+
+        // TRACK004: [Trackable] on struct or static class
+        if (namedTypeSymbol.TypeKind == TypeKind.Struct || namedTypeSymbol.IsStatic)
         {
-            var hasAttribute = namedTypeSymbol.GetAttributes()
-                .Any(attr => attr.AttributeClass?.Name == "TrackableAttribute");
+            var location = namedTypeSymbol.Locations.FirstOrDefault() ?? Location.None;
+            context.ReportDiagnostic(Diagnostic.Create(TrackableOnInvalidTypeRule, location));
+            return;
+        }
 
-            if (!hasAttribute) return;
+        if (namedTypeSymbol.TypeKind != TypeKind.Class)
+            return;
 
-            var isPartial = namedTypeSymbol.DeclaringSyntaxReferences
-                .Any(refs =>
-                    refs.GetSyntax() is ClassDeclarationSyntax classSyntax
-                    && classSyntax.Modifiers.Any(m =>
-                        m.IsKind(SyntaxKind.PartialKeyword)));
+        // TRACK001: [Trackable] on non-partial class
+        var isPartial = namedTypeSymbol.DeclaringSyntaxReferences
+            .Any(refs =>
+                refs.GetSyntax() is ClassDeclarationSyntax classSyntax
+                && classSyntax.Modifiers.Any(m =>
+                    m.IsKind(SyntaxKind.PartialKeyword)));
 
-            if (!isPartial)
-            {
-                var location = namedTypeSymbol.Locations.FirstOrDefault() ?? Location.None;
-                var diagnostic = Diagnostic.Create(TrackableAttributeRule, location);
-                context.ReportDiagnostic(diagnostic);
-            }
+        if (!isPartial)
+        {
+            var location = namedTypeSymbol.Locations.FirstOrDefault() ?? Location.None;
+            context.ReportDiagnostic(Diagnostic.Create(TrackableAttributeRule, location));
         }
     }
 

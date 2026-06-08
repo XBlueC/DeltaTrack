@@ -12,8 +12,9 @@ public class TrackableCodeFixProvider : CodeFixProvider
 {
     private const string TrackableAttributeRuleId = "TRACK001";
     private const string TrackableFieldRuleId = "TRACK002";
+    private const string TrackIgnoreOutsideTrackableRuleId = "TRACK003";
 
-    public override ImmutableArray<string> FixableDiagnosticIds => ImmutableArray.Create(TrackableAttributeRuleId, TrackableFieldRuleId);
+    public override ImmutableArray<string> FixableDiagnosticIds => ImmutableArray.Create(TrackableAttributeRuleId, TrackableFieldRuleId, TrackIgnoreOutsideTrackableRuleId);
 
     public override async Task RegisterCodeFixesAsync(CodeFixContext context)
     {
@@ -26,6 +27,9 @@ public class TrackableCodeFixProvider : CodeFixProvider
                 break;
             case TrackableFieldRuleId:
                 await RegisterTrackableFieldFixAsync(context, diagnostic);
+                break;
+            case TrackIgnoreOutsideTrackableRuleId:
+                await RegisterTrackIgnoreFixAsync(context, diagnostic);
                 break;
         }
     }
@@ -53,8 +57,6 @@ public class TrackableCodeFixProvider : CodeFixProvider
         if (root == null) return;
 
         var node = root.FindNode(diagnostic.Location.SourceSpan);
-
-        // 诊断位置是 VariableDeclaratorSyntax，需要向上找到 FieldDeclarationSyntax
         var fieldDecl = node as FieldDeclarationSyntax;
         if (fieldDecl == null)
         {
@@ -202,8 +204,6 @@ public class TrackableCodeFixProvider : CodeFixProvider
         }
 
         var newFieldDecl = fieldDecl.WithModifiers(newFieldModifiers);
-
-        // 先在类内部替换字段，再替换整个类（同时添加 partial）
         var newClassDecl = classDecl.ReplaceNode(fieldDecl, newFieldDecl);
         newClassDecl = newClassDecl.WithModifiers(newClassModifiers);
 
@@ -213,6 +213,64 @@ public class TrackableCodeFixProvider : CodeFixProvider
     }
 
     public override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
+
+    private static async Task RegisterTrackIgnoreFixAsync(CodeFixContext context, Diagnostic diagnostic)
+    {
+        var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
+        if (root == null) return;
+
+        var node = root.FindNode(diagnostic.Location.SourceSpan);
+
+        var fieldDecl = node as FieldDeclarationSyntax;
+        if (fieldDecl == null)
+            fieldDecl = node?.Parent as FieldDeclarationSyntax;
+        if (fieldDecl == null)
+            fieldDecl = node?.Parent?.Parent as FieldDeclarationSyntax;
+        if (fieldDecl == null) return;
+
+        context.RegisterCodeFix(
+            new CustomCodeAction(
+                "Remove [TrackIgnore] attribute",
+                c => RemoveTrackIgnoreAttributeAsync(context.Document, fieldDecl, c),
+                diagnostic),
+            diagnostic);
+    }
+
+    private static async Task<Document> RemoveTrackIgnoreAttributeAsync(Document document, FieldDeclarationSyntax fieldDecl, CancellationToken cancellationToken)
+    {
+        var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+        if (root == null) return document;
+
+        var newFieldDecl = fieldDecl;
+        var attrLists = newFieldDecl.AttributeLists;
+
+        for (var i = attrLists.Count - 1; i >= 0; i--)
+        {
+            var list = attrLists[i];
+            var remainingAttrs = new SeparatedSyntaxList<AttributeSyntax>();
+
+            foreach (var attr in list.Attributes)
+            {
+                var name = attr.Name.ToString();
+                if (name == "TrackIgnore" || name == "TrackIgnoreAttribute" || name.EndsWith("TrackIgnore"))
+                    continue;
+                remainingAttrs = remainingAttrs.Add(attr);
+            }
+
+            if (remainingAttrs.Count == 0)
+            {
+                newFieldDecl = newFieldDecl.WithAttributeLists(attrLists.RemoveAt(i));
+            }
+            else if (remainingAttrs.Count < list.Attributes.Count)
+            {
+                var newList = list.WithAttributes(remainingAttrs);
+                newFieldDecl = newFieldDecl.ReplaceNode(list, newList);
+            }
+        }
+
+        var newRoot = root.ReplaceNode(fieldDecl, newFieldDecl);
+        return document.WithSyntaxRoot(newRoot);
+    }
 
     private sealed class CustomCodeAction : Microsoft.CodeAnalysis.CodeActions.CodeAction
     {

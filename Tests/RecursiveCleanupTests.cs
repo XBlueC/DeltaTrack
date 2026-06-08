@@ -149,7 +149,7 @@ public class RecursiveCleanupTests
     /// <summary>
     /// BUG场景: HashSet<SimpleModel> 中的 trackable 对象应该被递归清理
     /// 
-    /// IsCollectionOfTrackable 只检查 ImplementsIListInterface，
+    /// HasCollectionOfTrackable 只检查 ImplementsIListInterface，
     /// 而 HashSet 实现了 ISet 接口，会被 ImplementsIListInterface 排除。
     /// 导致 HashSet<Trackable> 的递归清理代码不会生成。
     /// </summary>

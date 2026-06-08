@@ -81,8 +81,8 @@ public class TrackableDictionary<TKey, TValue> : TrackableCollectionBase, IDicti
 
     public bool Remove(KeyValuePair<TKey, TValue> item)
     {
-        if (Equals(_inner[item.Key], item.Value)) return Remove(item.Key);
-        return false;
+        if (!_inner.TryGetValue(item.Key, out var existing) || !Equals(existing, item.Value)) return false;
+        return Remove(item.Key);
     }
 
     public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator() => _inner.GetEnumerator();

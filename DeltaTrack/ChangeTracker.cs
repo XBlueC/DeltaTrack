@@ -193,7 +193,7 @@ public class ChangeTracker : IDisposable
             return (T)Enum.ToObject(underlying, value);
         }
 
-        if (value is IConvertible && typeof(IConvertible).IsAssignableFrom(underlying))
+        if (value is IConvertible)
         {
             return (T)Convert.ChangeType(value, underlying, CultureInfo.InvariantCulture);
         }
