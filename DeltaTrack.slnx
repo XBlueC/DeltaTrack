@@ -1,5 +1,6 @@
 <Solution>
     <Project Path="Analyzers/Analyzers.csproj"/>
     <Project Path="DeltaTrack/DeltaTrack.csproj"/>
+    <Project Path="Generator.Tests/Generator.Tests.csproj"/>
     <Project Path="Tests/Tests.csproj"/>
 </Solution>

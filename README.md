@@ -1,5 +1,7 @@
 # DeltaTrack
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 Precise object change detection library - Automatically tracks property changes with zero intrusion.
 
 [![NuGet](https://img.shields.io/nuget/v/DeltaTrack.svg)](https://www.nuget.org/packages/DeltaTrack/)
@@ -15,7 +17,7 @@ DeltaTrack solves the pain points of object state change detection:
 - **Smart Detection**: Automatically captures all changes including property assignments, collection add/remove/modify
 - **Hierarchical Tracking**: Supports deep change detection for nested objects and complex collections
 - **Real-time Feedback**: Provides changed field list and change events
-- **Zero GC Pressure**: Uses bitflag (`long`) instead of `HashSet<string>` for dirty marking, ideal for high-frequency scenarios like game servers
+- **Allocation-free Dirty Marking**: Uses bitflags instead of `HashSet<string>`; warmed scalar setters do not allocate
 
 ## Installation
 
@@ -61,6 +63,10 @@ public partial class Order
 ```
 
 The Analyzer automatically generates the `ITrackable` implementation - no manual code needed.
+
+Fields from every partial declaration are included. Generic classes and nested classes are supported; containing types
+must also be partial. Static, constant and readonly fields are excluded from tracking. Attribute aliases and the full
+`TrackableFieldAttribute` spelling are supported.
 
 ### Check Change Status
 
@@ -135,7 +141,8 @@ order.OnChanged -= handler;  // Manual unsubscribe
 
 ### Detailed Change Events (with `ChangeInfo`)
 
-For scenarios that need to know **which** flags were just dirtied and **which** object emitted the change, subscribe to `OnChangedDetailed`:
+For scenarios that need to know **which** flags were just dirtied and **which** object emitted the change, subscribe to
+`OnChangedDetailed`:
 
 ```csharp
 order.OnChangedDetailed += info =>
@@ -147,7 +154,8 @@ order.OnChangedDetailed += info =>
 };
 ```
 
-`OnChangedDetailed` fires alongside `OnChanged`. The `Source` is always the object whose field setter was invoked; nested-object changes propagate as a dirty bit on the parent's reference field.
+`OnChangedDetailed` fires alongside `OnChanged`. `Source` is the object emitting that particular event. A nested change
+also emits a parent event with the parent's reference field marked dirty and the parent as `Source`.
 
 ### Suspend Tracking (batch / replay / deserialization)
 
@@ -164,11 +172,16 @@ using (order.SuspendTracking())
 order.HasChanges();   // False  — block is fully transparent to tracking
 ```
 
-Nested and reentrant: each `Dispose()` decrements the suspend counter; tracking only resumes when the outermost scope exits.
+Nested and reentrant: each `Dispose()` decrements the suspend counter; tracking only resumes when the outermost scope
+exits.
+
+Suspension preserves existing dirty flags and does not replay suppressed changes when the scope exits. It applies only
+to this object, not recursively to nested objects; a child can still become dirty while its parent is suspended.
 
 ### Delta Export / Apply
 
-Each trackable class auto-generates `GetDelta()` (returns only dirty fields) and `ApplyDelta()` (bulk write-back). Ideal for incremental network sync, audit logs and database UPDATEs.
+Each trackable class auto-generates `GetDelta()` (returns only dirty fields) and `ApplyDelta()` (bulk write-back). Ideal
+for incremental network sync, audit logs and database UPDATEs.
 
 ```csharp
 order.CustomerName = "Alice";
@@ -190,21 +203,31 @@ using (received.SuspendTracking())     // optional: keep receiver clean
 
 Notes:
 
-- `GetDelta()` returns nested objects and collections **by reference** — recurse into them yourself if you need deep diffs.
-- `ApplyDelta()` ignores keys not matching any property. Each value is coerced via `ChangeTracker.DeltaCast<T>`, which handles in order:
+- Clean objects share an immutable empty delta. Exporting dirty values creates a dictionary and can box value types.
+- `GetDelta()` returns nested objects and collections **by reference** — recurse into them yourself if you need deep
+  diffs.
+- Delta values are typed objects, not a complete wire format. For example, default `System.Text.Json` deserialization
+  into `Dictionary<string, object>` produces `JsonElement` values that need conversion before `ApplyDelta()`.
+- `ApplyDelta()` ignores keys not matching any property. Each value is coerced via `ChangeTracker.DeltaCast<T>`, which
+  handles in order:
     1. **Identity / inheritance** — same type or derived-to-base assignments pass through directly (zero overhead).
-    2. **Enums** — `int` / `long` / `string` round-trip to any `enum` (including `[Flags]` combinations) via `Enum.ToObject` / `Enum.Parse`.
-    3. **`IConvertible`** — primitives, `string`, `decimal`, `DateTime`, `bool`, `char` are coerced via `Convert.ChangeType` (`InvariantCulture`), friendly for JSON deserialisers that widen all
+    2. **Enums** — `int` / `long` / `string` round-trip to any `enum` (including `[Flags]` combinations) via
+       `Enum.ToObject` / `Enum.Parse`.
+    3. **`IConvertible`** — primitives, `string`, `decimal`, `DateTime`, `bool`, `char` are coerced via
+       `Convert.ChangeType` (`InvariantCulture`), friendly for JSON deserialisers that widen all
        integers to `long`.
-    4. **`Nullable<T>`** — automatically unwrapped + rewrapped; works for **any** underlying value type (including non-`IConvertible` user structs, `Guid`, `TimeSpan`).
-- Failed conversions throw `InvalidCastException` / `OverflowException` / `ArgumentException` — these are deliberately **not swallowed**, so callers can detect malformed payloads at the field
+    4. **`Nullable<T>`** — automatically unwrapped + rewrapped; works for **any** underlying value type (including non-
+       `IConvertible` user structs, `Guid`, `TimeSpan`).
+- Failed conversions throw `InvalidCastException` / `OverflowException` / `ArgumentException` — these are deliberately
+  **not swallowed**, so callers can detect malformed payloads at the field
   boundary.
 
 ## Attributes
 
 ### `[Trackable]`
 
-Marks a class as trackable, Analyzer automatically generates `ITrackable` implementation. **All private fields are auto-tracked**:
+Marks a class as trackable, Analyzer automatically generates `ITrackable` implementation. **All private fields are
+auto-tracked**:
 
 ```csharp
 [Trackable]
@@ -266,8 +289,6 @@ public partial class MyClass
 Add extra attributes to generated properties, supports constructor parameters:
 
 ```csharp
-using System.Text.Json.Serialization;
-
 [Trackable]
 public partial class MyClass
 {
@@ -300,6 +321,23 @@ private string _name;
 ## Trackable Collections
 
 DeltaTrack provides three trackable collections that automatically monitor element add/remove/modify operations.
+
+Fields declared as `IList<T>`, `IDictionary<TKey, TValue>` or `ISet<T>` are supported. Replacing a generated collection
+property copies its contents and releases the old wrapper's subscriptions. A retained old wrapper can still be used as a
+collection, but no longer reports changes to its former owner. Reassigning the current wrapper or the same nested object
+is a no-op.
+
+Existing trackable elements are subscribed when the owner is first used through its tracking API or an event
+subscription; reading the collection property first is not required. Interfaces such as `ITrackable` and object-typed
+fields/collection elements are checked at runtime. Mutating a raw backing collection directly still bypasses the
+wrapper.
+
+Collection assignment preserves the comparers of `Dictionary`, `HashSet`, `SortedDictionary`, `SortedList`, `SortedSet`
+and their tracking wrappers. Use `IDictionary`/`ISet` fields to accept either hash-based or sorted implementations.
+Copying between incompatible concrete collection kinds, or from a custom collection whose comparer is not exposed,
+throws `NotSupportedException` before changing the property. Explicitly construct a standard collection with the
+required comparer when assigning such data. Custom backing collections can still be initialized in a constructor and
+used through their wrappers.
 
 ### TrackableList\<T\>
 
@@ -433,8 +471,10 @@ There is **no upper bound** on the number of tracked fields per class. The gener
 | ≤ 64        | single `long` slot                | `[Flags] enum DirtyFlag : long`, `GetDirtyFlags()`, `MarkChanged(DirtyFlag)` |
 | &gt; 64     | `long[]` slots, one per 64 fields | `FieldIndex` constants only (no `DirtyFlag` enum / no `GetDirtyFlags`)       |
 
-The storage difference is internal — every other API (`HasChanges()`, `GetChangedProperties()`, `OnChanged`, `OnChangedDetailed`, `GetDelta()` / `ApplyDelta()`, `MarkChanged(string)`,
-`SuspendTracking()`, `MarkClean()`) behaves identically. `ChangeInfo.Slot` lets detailed subscribers tell which 64-bit window a change came from.
+The storage difference is internal — every other API (`HasChanges()`, `GetChangedProperties()`, `OnChanged`,
+`OnChangedDetailed`, `GetDelta()` / `ApplyDelta()`, `MarkChanged(string)`,
+`SuspendTracking()`, `MarkClean()`) behaves identically. `ChangeInfo.Slot` lets detailed subscribers tell which 64-bit
+window a change came from.
 
 ### Extension Methods
 
@@ -460,11 +500,21 @@ using var sub = order.SubscribeToChanges(() => Console.WriteLine("Changed!"));
 
 DeltaTrack includes compile-time analyzers to catch issues early:
 
-| Code     | Severity | Description                                                          |
-|----------|----------|----------------------------------------------------------------------|
-| TRACK001 | Error    | `[Trackable]` class must be declared as `partial`                    |
-| TRACK002 | Error    | `[TrackableField]` must be on a private field of a `partial` class   |
-| TRACK003 | Warning  | `[TrackIgnore]` only takes effect on fields of `[Trackable]` classes |
+| Code     | Severity | Description                                                                               |
+|----------|----------|-------------------------------------------------------------------------------------------|
+| TRACK001 | Error    | `[Trackable]` class must be declared as `partial`                                         |
+| TRACK002 | Error    | `[TrackableField]` must be on a private field of a `partial` class                        |
+| TRACK003 | Warning  | `[TrackIgnore]` only takes effect on fields of `[Trackable]` classes                      |
+| TRACK004 | Error    | `[Trackable]` requires a non-static class                                                 |
+| TRACK005 | Error    | A type requesting generated tracking cannot inherit another tracked type; use composition |
+
+An unannotated subclass can use inherited tracking members. It must not request another generated tracker through
+`[Trackable]` or `[TrackableField]`.
+
+Tracked object graphs must be acyclic. Re-entering a child-change subscription or recursive cleanup throws
+`InvalidOperationException` with a cycle message. Shared children and duplicate references are supported. Assignments
+and collection operations are not rolled back when an event handler or cycle check throws; remove the cycle before
+reusing the graph.
 
 ## Use Cases
 
@@ -480,17 +530,20 @@ DeltaTrack includes compile-time analyzers to catch issues early:
 
 ## Thread Safety
 
-**DeltaTrack is single-threaded by design.** A trackable instance and any object graph reachable from it (nested trackables, `TrackableList<T>` / `TrackableSet<T>` / `TrackableDictionary<TKey,TValue>`
+**DeltaTrack is single-threaded by design.** A trackable instance and any object graph reachable from it (nested
+trackables, `TrackableList<T>` / `TrackableSet<T>` / `TrackableDictionary<TKey,TValue>`
 wrappers, attached event handlers) must be accessed from a single thread at a time.
 
 The internals deliberately avoid locks for performance:
 
 - Dirty flags (`long`) are written/read without `Interlocked` — cross-thread updates may be lost or torn.
-- `OnChanged` / `OnChangedDetailed` event handlers are invoked **synchronously and re-entrantly** on the calling thread; throwing or mutating the same object inside a handler will recurse.
+- `OnChanged` / `OnChangedDetailed` event handlers are invoked **synchronously and re-entrantly** on the calling thread;
+  throwing or mutating the same object inside a handler will recurse.
 - `SuspendTracking()` / `MarkClean()` change global state of the tracker and are not safe under contention.
-- Subscription bookkeeping (`Dictionary<ITrackable, ...>`) is not concurrent.
+- Subscription bookkeeping uses object identity and a callback-specific reference count; it is not concurrent.
 
-If you need to mutate a trackable graph from multiple threads, serialize access externally (e.g. an actor / dispatcher / `lock`). Read-only inspection (`HasChanges`, `GetChangedProperties`,
+If you need to mutate a trackable graph from multiple threads, serialize access externally (e.g. an actor / dispatcher /
+`lock`). Read-only inspection (`HasChanges`, `GetChangedProperties`,
 `GetDelta`) from another thread also requires the same external synchronization.
 
 Typical safe patterns:
@@ -504,14 +557,20 @@ Typical safe patterns:
 - **Compile-time Generation** - Based on Roslyn Source Generator, no runtime overhead
 - **Zero Intrusion** - Only add attributes, no business code modification
 - **Zero Reflection** - Generated code calls directly, excellent performance
-- **Zero GC Dirty Tracking** - Uses `long` bitflag instead of `HashSet<string>`, no allocations on change
-- **Type-Safe Flags** - Generated `[Flags] enum DirtyFlag : long` per class for compile-time checked operations (auto-falls back to `FieldIndex` constants when a class has more than 64 tracked fields)
-- **Detailed Change Events** - `OnChangedDetailed` carries the exact dirty bits + emitting source for fine-grained subscribers
+- **Allocation-free Dirty Marking** - Warmed scalar setters and primitive collection element notifications do not
+  allocate; initialization, subscription changes, collection growth and nonempty delta export can allocate
+- **Type-Safe Flags** - Generated `[Flags] enum DirtyFlag : long` per class for compile-time checked operations
+  (auto-falls back to `FieldIndex` constants when a class has more than 64 tracked fields)
+- **Detailed Change Events** - `OnChangedDetailed` carries the exact dirty bits + emitting source for fine-grained
+  subscribers
 - **Suspendable Tracking** - `SuspendTracking()` block disables dirty marking for batch loads / deserialization / replay
-- **Delta Export & Apply** - `GetDelta()` / `ApplyDelta()` enable incremental network sync, audit logs, and minimal DB updates
-- **Smart Reference Counting** - Correctly manages subscriptions when same object referenced multiple places, prevents memory leaks
+- **Delta Export & Apply** - `GetDelta()` / `ApplyDelta()` enable incremental network sync, audit logs, and minimal DB
+  updates
+- **Smart Reference Counting** - Correctly manages subscriptions when same object referenced multiple places, prevents
+  memory leaks
 - **Nested Tracking** - Auto-tracks nested objects and trackable elements in collections
-- **Compile-time Diagnostics** - Analyzer catches common mistakes (non-partial class, misplaced `[TrackableField]`, etc.)
+- **Compile-time Diagnostics** - Analyzer catches common mistakes (non-partial class, misplaced `[TrackableField]`,
+  etc.)
 
 ## License
 

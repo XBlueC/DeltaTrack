@@ -5,7 +5,7 @@
         <Nullable>disable</Nullable>
         <RootNamespace>DeltaTrack</RootNamespace>
         <PackageId>DeltaTrack</PackageId>
-        <Version>1.1.1</Version>
+        <Version>1.1.2</Version>
         <Authors>XBlueC</Authors>
         <Description>Precise object change detection library - Generates code at compile time using Roslyn, automatically tracks property changes with zero intrusion. Supports nested objects, collection monitoring, ChangeInfo events, SuspendTracking and Delta export/apply.</Description>
         <PackageProjectUrl>https://github.com/XBlueC/DeltaTrack</PackageProjectUrl>
@@ -15,7 +15,7 @@
         <RepositoryUrl>https://github.com/XBlueC/DeltaTrack</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <LangVersion>14</LangVersion>
+        <LangVersion>default</LangVersion>
         <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
     <ItemGroup>

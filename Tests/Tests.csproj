@@ -6,6 +6,7 @@
         <Nullable>disable</Nullable>
         <IsPackable>false</IsPackable>
         <RootNamespace>Tests</RootNamespace>
+        <LangVersion>default</LangVersion>
     </PropertyGroup>
 
     <ItemGroup>

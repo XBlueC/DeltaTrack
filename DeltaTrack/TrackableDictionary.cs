@@ -88,4 +88,42 @@ public class TrackableDictionary<TKey, TValue> : TrackableCollectionBase, IDicti
     public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator() => _inner.GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => _inner.GetEnumerator();
+
+    public static IDictionary<TKey, TValue> CopyItems(IDictionary<TKey, TValue> source)
+    {
+        while (source is TrackableDictionary<TKey, TValue> wrapper) source = wrapper._inner;
+        if (source is SortedDictionary<TKey, TValue> sorted)
+            return new SortedDictionary<TKey, TValue>(source, sorted.Comparer);
+        if (source is SortedList<TKey, TValue> list) return new SortedList<TKey, TValue>(source, list.Comparer);
+        return CopyDictionary(source);
+    }
+
+    public static Dictionary<TKey, TValue> CopyDictionary(IDictionary<TKey, TValue> source)
+    {
+        while (source is TrackableDictionary<TKey, TValue> wrapper) source = wrapper._inner;
+        return source is Dictionary<TKey, TValue> dictionary
+            ? new Dictionary<TKey, TValue>(source, dictionary.Comparer)
+            : throw new NotSupportedException(
+                "The dictionary comparer cannot be preserved. Assign a Dictionary<TKey, TValue> with the required comparer, or use an IDictionary<TKey, TValue> field for a sorted dictionary.");
+    }
+
+    public static SortedDictionary<TKey, TValue> CopySortedDictionary(IDictionary<TKey, TValue> source)
+    {
+        while (source is TrackableDictionary<TKey, TValue> wrapper) source = wrapper._inner;
+        var comparer = source is SortedDictionary<TKey, TValue> sorted ? sorted.Comparer :
+            source is SortedList<TKey, TValue> list ? list.Comparer :
+            throw new NotSupportedException(
+                "The ordering comparer cannot be preserved. Assign a SortedDictionary<TKey, TValue> or SortedList<TKey, TValue>.");
+        return new SortedDictionary<TKey, TValue>(source, comparer);
+    }
+
+    public static SortedList<TKey, TValue> CopySortedList(IDictionary<TKey, TValue> source)
+    {
+        while (source is TrackableDictionary<TKey, TValue> wrapper) source = wrapper._inner;
+        var comparer = source is SortedList<TKey, TValue> list ? list.Comparer :
+            source is SortedDictionary<TKey, TValue> sorted ? sorted.Comparer :
+            throw new NotSupportedException(
+                "The ordering comparer cannot be preserved. Assign a SortedList<TKey, TValue> or SortedDictionary<TKey, TValue>.");
+        return new SortedList<TKey, TValue>(source, comparer);
+    }
 }

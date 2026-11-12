@@ -50,7 +50,13 @@ public class TrackableAnalyzer : DiagnosticAnalyzer
     );
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-        ImmutableArray.Create(TrackableAttributeRule, TrackableFieldRule, TrackIgnoreOutsideTrackableRule, TrackableOnInvalidTypeRule);
+        ImmutableArray.Create(TrackableAttributeRule, TrackableFieldRule, TrackIgnoreOutsideTrackableRule,
+            TrackableOnInvalidTypeRule, TrackableInheritanceRule);
+
+    private static readonly DiagnosticDescriptor TrackableInheritanceRule = new(
+        "TRACK005", "Tracking inheritance is not supported",
+        "Tracking members cannot be generated for '{0}' because base type '{1}' already provides tracking; use composition instead",
+        "Usage", DiagnosticSeverity.Error, true);
 
     public override void Initialize(AnalysisContext context)
     {
@@ -65,8 +71,17 @@ public class TrackableAnalyzer : DiagnosticAnalyzer
         if (context.Symbol is not INamedTypeSymbol namedTypeSymbol)
             return;
 
-        var hasAttribute = namedTypeSymbol.GetAttributes()
-            .Any(attr => attr.AttributeClass?.Name == "TrackableAttribute");
+        var hasAttribute = TrackingModelFacts.HasAttribute(namedTypeSymbol, "DeltaTrack.TrackableAttribute");
+
+        var hasTrackedFields = namedTypeSymbol.GetMembers().OfType<IFieldSymbol>()
+            .Any(f => TrackingModelFacts.HasAttribute(f, "DeltaTrack.TrackableFieldAttribute"));
+        if ((hasAttribute || hasTrackedFields) && TrackingModelFacts.FindTrackableBase(namedTypeSymbol) is
+                { } trackedBase)
+        {
+            context.ReportDiagnostic(Diagnostic.Create(TrackableInheritanceRule,
+                namedTypeSymbol.Locations.FirstOrDefault() ?? Location.None, namedTypeSymbol.Name, trackedBase.Name));
+            return;
+        }
 
         if (!hasAttribute) return;
 
@@ -100,13 +115,12 @@ public class TrackableAnalyzer : DiagnosticAnalyzer
         if (context.Symbol is not IFieldSymbol fieldSymbol)
             return;
 
-        var attributes = fieldSymbol.GetAttributes();
         var containingType = fieldSymbol.ContainingType;
         if (containingType == null)
             return;
 
-        var hasTrackableFieldAttribute = attributes
-            .Any(attr => attr.AttributeClass?.Name == "TrackableFieldAttribute");
+        var hasTrackableFieldAttribute =
+            TrackingModelFacts.HasAttribute(fieldSymbol, "DeltaTrack.TrackableFieldAttribute");
 
         if (hasTrackableFieldAttribute)
         {
@@ -124,13 +138,11 @@ public class TrackableAnalyzer : DiagnosticAnalyzer
             }
         }
 
-        var hasTrackIgnoreAttribute = attributes
-            .Any(attr => attr.AttributeClass?.Name == "TrackIgnoreAttribute");
+        var hasTrackIgnoreAttribute = TrackingModelFacts.HasAttribute(fieldSymbol, "DeltaTrack.TrackIgnoreAttribute");
 
         if (hasTrackIgnoreAttribute)
         {
-            var classHasTrackable = containingType.GetAttributes()
-                .Any(attr => attr.AttributeClass?.Name == "TrackableAttribute");
+            var classHasTrackable = TrackingModelFacts.HasAttribute(containingType, "DeltaTrack.TrackableAttribute");
 
             if (!classHasTrackable)
             {

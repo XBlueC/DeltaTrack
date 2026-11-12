@@ -18,133 +18,142 @@ public class TrackableGenerator : IIncrementalGenerator
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        var provider = context.SyntaxProvider
-            .CreateSyntaxProvider(
-                static (node, _) => IsSyntaxTargetForGeneration(node),
-                static (ctx, _) => GetClassInfo(ctx))
+        var classes = context.SyntaxProvider
+            .ForAttributeWithMetadataName(TrackableAttributeFullName,
+                static (node, _) => node is ClassDeclarationSyntax declaration &&
+                                    declaration.Modifiers.Any(PartialKeyword),
+                static (ctx, token) => GetClassInfo((INamedTypeSymbol)ctx.TargetSymbol, token))
             .Where(static c => c.ShouldGenerate);
 
-        context.RegisterSourceOutput(provider, GenerateCode);
+        var fields = context.SyntaxProvider
+            .ForAttributeWithMetadataName(TrackableFieldAttributeFullName,
+                static (_, _) => true,
+                static (ctx, token) => GetFieldClassInfo(ctx, token))
+            .Where(static c => c.ShouldGenerate);
+
+        context.RegisterSourceOutput(classes.WithTrackingName("TrackableClasses"), GenerateCode);
+        context.RegisterSourceOutput(fields.WithTrackingName("TrackableFields"), GenerateCode);
     }
 
-    private static bool IsSyntaxTargetForGeneration(SyntaxNode node)
+    private static ClassInfo GetFieldClassInfo(GeneratorAttributeSyntaxContext context, CancellationToken token)
     {
-        if (node is not ClassDeclarationSyntax classDecl)
-            return false;
+        if (context.TargetSymbol is not IFieldSymbol field || HasTrackableAttribute(field.ContainingType))
+            return new ClassInfo();
 
-        if (!classDecl.Modifiers.Any(m => m.IsKind(PartialKeyword)))
-            return false;
+        // A type can have several annotated fields, including fields in other partial declarations.
+        var first = field.ContainingType.GetMembers().OfType<IFieldSymbol>()
+            .FirstOrDefault(f => HasAttribute(f, TrackableFieldAttributeFullName));
+        return SymbolEqualityComparer.Default.Equals(first, field)
+            ? GetClassInfo(field.ContainingType, token)
+            : new ClassInfo();
+    }
 
-        if (classDecl.AttributeLists.Count > 0)
-            return true;
+    private static ClassInfo GetClassInfo(INamedTypeSymbol typeSymbol, CancellationToken token)
+    {
+        if (typeSymbol.IsStatic || typeSymbol.TypeKind != TypeKind.Class ||
+            TrackingModelFacts.FindTrackableBase(typeSymbol) != null ||
+            !typeSymbol.DeclaringSyntaxReferences.Any(r =>
+                r.GetSyntax(token) is ClassDeclarationSyntax c && c.Modifiers.Any(PartialKeyword)))
+            return new ClassInfo();
 
-        foreach (var member in classDecl.Members)
+        var autoTrack = HasTrackableAttribute(typeSymbol);
+        var fields = typeSymbol.GetMembers().OfType<IFieldSymbol>()
+            .Where(f => !f.IsImplicitlyDeclared && !f.IsStatic && !f.IsConst && !f.IsReadOnly &&
+                        f.DeclaredAccessibility == Accessibility.Private && f.Type.TypeKind != TypeKind.Error &&
+                        (autoTrack || HasAttribute(f, TrackableFieldAttributeFullName)) &&
+                        !HasAttribute(f, TrackIgnoreAttributeFullName))
+            .ToArray();
+
+        var containers = new Stack<INamedTypeSymbol>();
+        for (var parent = typeSymbol.ContainingType; parent != null; parent = parent.ContainingType)
         {
-            if (member is FieldDeclarationSyntax field && field.AttributeLists.Count > 0)
-            {
-                foreach (var attrList in field.AttributeLists)
-                {
-                    foreach (var attr in attrList.Attributes)
-                    {
-                        var name = attr.Name.ToString();
-                        if (name == "TrackableField" || name.EndsWith("TrackableField"))
-                            return true;
-                    }
-                }
-            }
+            if (!parent.DeclaringSyntaxReferences.Any(r =>
+                    r.GetSyntax(token) is TypeDeclarationSyntax c && c.Modifiers.Any(PartialKeyword)))
+                return new ClassInfo();
+            containers.Push(parent);
         }
 
-        return false;
-    }
-
-    private static ClassInfo GetClassInfo(GeneratorSyntaxContext context)
-    {
-        var classDecl = (ClassDeclarationSyntax)context.Node;
-        var model = context.SemanticModel;
-        var typeSymbol = ModelExtensions.GetDeclaredSymbol(model, classDecl);
-        if (typeSymbol == null)
-            return new ClassInfo { ShouldGenerate = false };
-
-        var hasClassTrackableAttribute = HasTrackableAttribute(typeSymbol);
-
-        var fields = classDecl.Members
-            .OfType<FieldDeclarationSyntax>()
-            .Where(f => ShouldTrackField(f, hasClassTrackableAttribute))
-            .SelectMany(f => f.Declaration.Variables.Select(v => new
-            {
-                Variable = v,
-                FieldDeclaration = f,
-                TypeSymbol = model.GetTypeInfo(f.Declaration.Type).Type,
-                FieldSymbol = (IFieldSymbol)model.GetDeclaredSymbol(v)
-            }))
-            .Where(x => x.TypeSymbol != null && !HasTrackIgnoreAttribute(x.FieldSymbol))
-            .ToList();
+        var ns = typeSymbol.ContainingNamespace.IsGlobalNamespace
+            ? string.Empty
+            : typeSymbol.ContainingNamespace.ToDisplayString();
 
         return new ClassInfo
         {
-            ShouldGenerate = fields.Any(),
-            Namespace = typeSymbol.ContainingNamespace?.IsGlobalNamespace == true ? string.Empty : typeSymbol.ContainingNamespace?.ToDisplayString() ?? string.Empty,
-            ClassName = typeSymbol.Name,
+            ShouldGenerate = fields.Length > 0,
+            Namespace = ns,
+            Declaration = GetTypeDeclaration(typeSymbol),
+            ContainingTypes = containers.Select(GetTypeDeclaration).ToImmutableArray(),
+            HintName = (string.IsNullOrEmpty(ns) ? "" : ns + ".") +
+                       string.Join("+", containers.Select(t => t.MetadataName).Append(typeSymbol.MetadataName)) +
+                       ".Track.g.cs",
             Fields = fields.Select(f =>
             {
-                var wrapper = TryGetCollectionWrapperType(f.TypeSymbol);
+                token.ThrowIfCancellationRequested();
+                var wrapper = TryGetCollectionWrapperType(f.Type);
                 return new FieldInfo
                 {
-                    Name = f.Variable.Identifier.Text,
-                    Type = f.TypeSymbol.ToDisplayString(),
-                    IsCollection = IsCollectionType(f.TypeSymbol!),
-                    IsTrackable = HasTrackableAttribute(f.TypeSymbol!),
+                    Name = EscapeIdentifier(f.Name),
+                    Type = f.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    IsCollection = wrapper != null,
+                    IsTrackable = IsTrackableType(f.Type) || wrapper == null && MayHoldTrackable(f.Type),
                     WrapperTypeName = wrapper?.WrapperTypeName ?? string.Empty,
                     CollectionInterfaceName = wrapper?.InterfaceName ?? string.Empty,
-                    HasCollectionOfTrackable = IsCollectionOfTrackable(f.TypeSymbol!),
-                    HasSetOfTrackable = IsSetOfTrackable(f.TypeSymbol!),
-                    HasDictionaryWithTrackableValues = IsDictionaryWithTrackableValues(f.TypeSymbol!),
-                    AdditionalAttributes = ExtractAdditionalAttributes(f.FieldSymbol)
+                    StorageTypeName = wrapper?.StorageTypeName ?? string.Empty,
+                    PopulateCollection = wrapper?.PopulateCollection ?? false,
+                    CopyExpression = wrapper?.CopyExpression ?? string.Empty,
+                    NeedsElementTracking = wrapper != null && ElementMayContainTrackable(wrapper.ElementType),
+                    IsDictionary = wrapper?.Kind == "IDictionary",
+                    AdditionalAttributes = ExtractAdditionalAttributes(f)
                 };
             }).ToImmutableArray()
         };
     }
 
-    private static bool ShouldTrackField(FieldDeclarationSyntax field, bool hasClassTrackableAttribute)
+    private static string GetTypeDeclaration(INamedTypeSymbol type)
     {
-        if (HasTrackIgnoreAttributeSyntax(field))
-            return false;
-
-        if (hasClassTrackableAttribute && IsPrivateField(field))
-            return true;
-
-        if (HasTrackableFieldAttribute(field))
-            return true;
-
-        return false;
+        var kind = type.TypeKind == TypeKind.Struct ? "struct" :
+            type.TypeKind == TypeKind.Interface ? "interface" : "class";
+        if (type.IsRecord) kind = "record " + kind;
+        var parameters = type.TypeParameters.Length == 0
+            ? ""
+            : "<" + string.Join(", ", type.TypeParameters.Select(p => EscapeIdentifier(p.Name))) + ">";
+        return (type.IsStatic ? "static " : "") + "partial " + kind + " " + EscapeIdentifier(type.Name) + parameters;
     }
 
-    private static bool IsPrivateField(FieldDeclarationSyntax field)
-    {
-        return field.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword));
-    }
+    private static string EscapeIdentifier(string name) => SyntaxFacts.GetKeywordKind(name) != None ? "@" + name : name;
 
-    private static bool HasTrackIgnoreAttributeSyntax(FieldDeclarationSyntax field)
-    {
-        return field.AttributeLists
-            .SelectMany(list => list.Attributes)
-            .Any(attr =>
-                attr.Name.ToString() == "TrackIgnore" ||
-                attr.Name.ToString() == TrackIgnoreAttributeFullName ||
-                attr.Name.ToFullString().EndsWith("TrackIgnore"));
-    }
+    private static bool HasAttribute(ISymbol symbol, string fullName) => symbol.GetAttributes()
+        .Any(a => a.AttributeClass?.ToDisplayString() == fullName);
 
-    private static bool HasTrackIgnoreAttribute(IFieldSymbol fieldSymbol)
-    {
-        return fieldSymbol.GetAttributes().Any(attr =>
-            attr.AttributeClass?.ToDisplayString() == TrackIgnoreAttributeFullName);
-    }
+    private static bool IsTrackableType(ITypeSymbol type) => type != null &&
+                                                             (type.ToDisplayString() == "DeltaTrack.ITrackable" ||
+                                                              (HasTrackableAttribute(type) ||
+                                                               type.AllInterfaces.Any(i =>
+                                                                   i.ToDisplayString() == "DeltaTrack.ITrackable") ||
+                                                               type is INamedTypeSymbol
+                                                               {
+                                                                   TypeKind: TypeKind.Class
+                                                               } named && named.GetMembers().OfType<IFieldSymbol>()
+                                                                   .Any(f => HasAttribute(f,
+                                                                       TrackableFieldAttributeFullName))));
 
-    private static ImmutableArray<PropertyAttributeInfo> ExtractAdditionalAttributes(IFieldSymbol fieldSymbol)
-    {
-        if (fieldSymbol == null) return ImmutableArray<PropertyAttributeInfo>.Empty;
+    private static bool MayHoldTrackable(ITypeSymbol type) => type.IsReferenceType &&
+                                                              (type.TypeKind == TypeKind.Interface ||
+                                                               type is INamedTypeSymbol { IsSealed: false });
 
-        var result = ImmutableArray.CreateBuilder<PropertyAttributeInfo>();
+    private static bool ElementMayContainTrackable(ITypeSymbol type) => type.SpecialType != SpecialType.System_String &&
+                                                                        (IsTrackableType(type) ||
+                                                                         MayHoldTrackable(type) ||
+                                                                         type is ITypeParameterSymbol ||
+                                                                         type.AllInterfaces.Any(i =>
+                                                                             i.ToDisplayString() ==
+                                                                             "System.Collections.IEnumerable"));
+
+    private static ImmutableArray<string> ExtractAdditionalAttributes(IFieldSymbol fieldSymbol)
+    {
+        if (fieldSymbol == null) return ImmutableArray<string>.Empty;
+
+        var result = ImmutableArray.CreateBuilder<string>();
         var fullyQualifiedFormat = SymbolDisplayFormat.FullyQualifiedFormat;
 
         foreach (var attr in fieldSymbol.GetAttributes())
@@ -176,17 +185,14 @@ public class TrackableGenerator : IIncrementalGenerator
                 }
             }
 
-            result.Add(new()
-            {
-                AttributeFullName = attrFullName,
-                Arguments = args.ToImmutable()
-            });
+            result.Add(attrFullName + "(" + string.Join(", ", args.Select(FormatAttributeArgument)) + ")");
         }
 
         return result.ToImmutable();
     }
 
-    private static void AddAttributeArgument(ImmutableArray<AttributeArgument>.Builder args, TypedConstant typedConst, SymbolDisplayFormat format)
+    private static void AddAttributeArgument(ImmutableArray<AttributeArgument>.Builder args, TypedConstant typedConst,
+        SymbolDisplayFormat format)
     {
         var isEnum = typedConst.Type?.TypeKind == TypeKind.Enum;
         string enumTypeName = null;
@@ -214,104 +220,63 @@ public class TrackableGenerator : IIncrementalGenerator
         });
     }
 
-    private static bool IsCollectionType(ITypeSymbol typeSymbol)
-    {
-        return typeSymbol.AllInterfaces.Any(i =>
-            i.Name == "ICollection" &&
-            i.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic");
-    }
-
-    private static (string WrapperTypeName, string InterfaceName)? TryGetCollectionWrapperType(ITypeSymbol typeSymbol)
+    private static CollectionInfo TryGetCollectionWrapperType(ITypeSymbol typeSymbol)
     {
         if (typeSymbol is not INamedTypeSymbol namedType)
             return null;
 
-        var format = SymbolDisplayFormat.FullyQualifiedFormat;
-        if (ImplementsIListInterface(namedType))
-        {
-            var itemType = namedType.TypeArguments[0].ToDisplayString(format);
-            return ($"global::DeltaTrack.TrackableList<{itemType}>", $"global::System.Collections.Generic.IList<{itemType}>");
-        }
+        var contract = FindCollectionInterface(namedType, "IDictionary") ??
+                       FindCollectionInterface(namedType, "ISet") ?? FindCollectionInterface(namedType, "IList");
+        if (contract == null) return null;
 
-        if (ImplementsIDictionaryInterface(namedType))
-        {
-            var keyType = namedType.TypeArguments[0].ToDisplayString(format);
-            var valueType = namedType.TypeArguments[1].ToDisplayString(format);
-            return ($"global::DeltaTrack.TrackableDictionary<{keyType}, {valueType}>", $"global::System.Collections.Generic.IDictionary<{keyType}, {valueType}>");
-        }
+        var concreteName = contract.Name == "IDictionary" ? "Dictionary" : contract.Name == "ISet" ? "HashSet" : "List";
+        var wrapperName = contract.Name == "IDictionary" ? "TrackableDictionary" :
+            contract.Name == "ISet" ? "TrackableSet" : "TrackableList";
+        var arguments = string.Join(", ",
+            contract.TypeArguments.Select(t => t.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
+        var isInterface = namedType.TypeKind == TypeKind.Interface;
+        if (isInterface && !SymbolEqualityComparer.Default.Equals(namedType, contract)) return null;
+        if (!isInterface && (namedType.IsAbstract || !namedType.InstanceConstructors.Any(c =>
+                c.Parameters.Length == 0 && c.DeclaredAccessibility == Accessibility.Public))) return null;
 
-        if (ImplementsISetInterface(namedType))
+        var wrapperTypeName = $"global::DeltaTrack.{wrapperName}<{arguments}>";
+        var copyMethod = isInterface ? "CopyItems" : "Copy" + namedType.Name;
+        var hasCopyMethod = contract.Name == "IDictionary" &&
+                            (isInterface || namedType.Name is "Dictionary" or "SortedDictionary" or "SortedList") ||
+                            contract.Name == "ISet" && (isInterface || namedType.Name is "HashSet" or "SortedSet");
+        hasCopyMethod &= isInterface || namedType.ContainingNamespace.ToDisplayString() == "System.Collections.Generic";
+        var unsupportedCopy = contract.Name != "IList" && !hasCopyMethod;
+        return new CollectionInfo
         {
-            var setType = namedType.TypeArguments[0].ToDisplayString(format);
-            return ($"global::DeltaTrack.TrackableSet<{setType}>", $"global::System.Collections.Generic.ISet<{setType}>");
-        }
-
-        return null;
+            Kind = contract.Name,
+            ElementType = contract.TypeArguments[contract.TypeArguments.Length - 1],
+            InterfaceName = contract.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            WrapperTypeName = wrapperTypeName,
+            CopyExpression = hasCopyMethod
+                ? $"{wrapperTypeName}.{copyMethod}(value)"
+                : unsupportedCopy
+                    ? "throw new global::System.NotSupportedException(\"Cannot copy a custom collection without a supported comparer. Use a standard dictionary/set or initialize the backing field in the constructor.\")"
+                    : string.Empty,
+            StorageTypeName = isInterface
+                ? $"global::System.Collections.Generic.{concreteName}<{arguments}>"
+                : namedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            PopulateCollection = !isInterface && (namedType.Name != concreteName ||
+                                                  namedType.ContainingNamespace.ToDisplayString() !=
+                                                  "System.Collections.Generic")
+        };
     }
 
     private static bool HasTrackableAttribute(ISymbol symbol) =>
-        symbol.GetAttributes().Any(attr =>
-            attr.AttributeClass?.ToDisplayString() == TrackableAttributeFullName);
+        HasAttribute(symbol, TrackableAttributeFullName);
 
-    private static bool HasTrackableFieldAttribute(FieldDeclarationSyntax field) =>
-        field.AttributeLists
-            .SelectMany(list => list.Attributes)
-            .Any(attr =>
-                attr.Name.ToString() == "TrackableField" ||
-                attr.Name.ToString() == TrackableFieldAttributeFullName ||
-                attr.Name.ToFullString().EndsWith("TrackableField"));
-
-    private static bool ImplementsIListInterface(INamedTypeSymbol typeSymbol)
+    private static INamedTypeSymbol FindCollectionInterface(INamedTypeSymbol type, string name)
     {
-        if (typeSymbol.AllInterfaces.Any(i =>
-                i.Name == "ISet" &&
-                i.IsGenericType &&
-                i.TypeArguments.Length == 1))
-        {
-            return false;
-        }
+        bool Matches(INamedTypeSymbol candidate) => candidate.TypeKind == TypeKind.Interface &&
+                                                    candidate.Name == name &&
+                                                    candidate.ContainingNamespace.ToDisplayString() ==
+                                                    "System.Collections.Generic";
 
-        var ienumerableT = typeSymbol.AllInterfaces.FirstOrDefault(i =>
-            i.Name == "IEnumerable" &&
-            i.IsGenericType &&
-            i.TypeArguments.Length == 1);
-
-        if (ienumerableT == null) return false;
-
-        return typeSymbol.GetMembers("Add")
-            .OfType<IMethodSymbol>()
-            .Any(m => m.Parameters.Length == 1 &&
-                      m.Parameters[0].Type.Equals(ienumerableT.TypeArguments[0], SymbolEqualityComparer.Default));
-    }
-
-    private static bool ImplementsIDictionaryInterface(INamedTypeSymbol typeSymbol)
-    {
-        // 检查是否实现 IEnumerable<KeyValuePair<TKey, TValue>>
-        return typeSymbol.AllInterfaces.Any(i =>
-            i.Name == "IEnumerable" &&
-            i.IsGenericType &&
-            i.TypeArguments.Length == 1 &&
-            i.TypeArguments[0] is INamedTypeSymbol constructed &&
-            constructed.Name == "KeyValuePair" &&
-            constructed.IsGenericType &&
-            constructed.TypeArguments.Length == 2);
-    }
-
-    private static bool ImplementsISetInterface(INamedTypeSymbol typeSymbol)
-    {
-        if (ImplementsIListInterface(typeSymbol)) return false;
-
-        var ienumerableT = typeSymbol.AllInterfaces.FirstOrDefault(i =>
-            i.Name == "IEnumerable" &&
-            i.IsGenericType &&
-            i.TypeArguments.Length == 1);
-
-        if (ienumerableT == null) return false;
-
-        return typeSymbol.GetMembers("Add")
-            .OfType<IMethodSymbol>()
-            .Any(m => m.Parameters.Length == 1 &&
-                      m.Parameters[0].Type.Equals(ienumerableT.TypeArguments[0], SymbolEqualityComparer.Default));
+        return Matches(type) ? type : type.AllInterfaces.FirstOrDefault(Matches);
     }
 
     private static void GenerateCode(SourceProductionContext context, ClassInfo classInfo)
@@ -325,7 +290,13 @@ public class TrackableGenerator : IIncrementalGenerator
             sb.AppendLine("{");
         }
 
-        sb.AppendLine($"    partial class {classInfo.ClassName} : global::DeltaTrack.ITrackable");
+        foreach (var container in classInfo.ContainingTypes)
+        {
+            sb.AppendLine(container);
+            sb.AppendLine("{");
+        }
+
+        sb.AppendLine($"    {classInfo.Declaration} : global::DeltaTrack.ITrackable");
         sb.AppendLine("    {");
 
         AppendDirtyFlagEnum(sb, classInfo);
@@ -338,22 +309,15 @@ public class TrackableGenerator : IIncrementalGenerator
 
         sb.AppendLine("    }");
 
+        foreach (var _ in classInfo.ContainingTypes)
+            sb.AppendLine("}");
+
         if (!string.IsNullOrEmpty(classInfo.Namespace))
         {
             sb.AppendLine("}");
         }
 
-        string hintName;
-        if (!string.IsNullOrEmpty(classInfo.Namespace))
-        {
-            hintName = $"{classInfo.Namespace}.{classInfo.ClassName}.Track.g.cs";
-        }
-        else
-        {
-            hintName = $"{classInfo.ClassName}.Track.g.cs";
-        }
-
-        context.AddSource(hintName, sb.ToString());
+        context.AddSource(classInfo.HintName, sb.ToString());
     }
 
     private static void AppendDirtyFlagEnum(StringBuilder sb, ClassInfo classInfo)
@@ -392,7 +356,8 @@ public class TrackableGenerator : IIncrementalGenerator
     private static void AppendDirtyFlagNames(StringBuilder sb, ClassInfo classInfo)
     {
         var names = classInfo.Fields.Select(f => $"\"{ToPropertyName(f.Name)}\"");
-        sb.AppendLine($"        private static readonly string[] _dirtyFlagNames = new string[] {{ {string.Join(", ", names)} }};");
+        sb.AppendLine(
+            $"        private static readonly string[] _dirtyFlagNames = new string[] {{ {string.Join(", ", names)} }};");
         sb.AppendLine();
     }
 
@@ -413,7 +378,15 @@ public class TrackableGenerator : IIncrementalGenerator
         foreach (var field in trackableFields)
         {
             var propName = ToPropertyName(field.Name);
-            sb.AppendLine($"            tracker.Subscribe({propName}, On{propName}Changed);");
+            sb.AppendLine($"            tracker.Subscribe({field.Name}, On{propName}Changed);");
+        }
+
+        foreach (var field in classInfo.Fields.Where(f => f.HasWrapper && !f.IsTrackable && f.NeedsElementTracking))
+        {
+            var propName = ToPropertyName(field.Name);
+            sb.AppendLine($"            if ({field.Name} != null && _wrapper{propName} == null)");
+            sb.AppendLine(
+                $"                _wrapper{propName} = new {field.WrapperTypeName}(On{propName}Changed, {field.Name});");
         }
 
         sb.AppendLine("            return tracker;");
@@ -472,7 +445,8 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine($@"            get => {fieldName};");
         sb.AppendLine(@"            set");
         sb.AppendLine(@"            {");
-        sb.AppendLine($@"                if (!global::System.Collections.Generic.EqualityComparer<{fieldType}>.Default.Equals({fieldName}, value))");
+        sb.AppendLine(
+            $@"                if (!global::System.Collections.Generic.EqualityComparer<{fieldType}>.Default.Equals({fieldName}, value))");
         sb.AppendLine(@"                {");
         sb.AppendLine($@"                    GetTracker();");
         sb.AppendLine($@"                    {fieldName} = value;");
@@ -494,17 +468,18 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine($@"            get {{ GetTracker(); return {fieldName}; }}");
         sb.AppendLine(@"            set");
         sb.AppendLine(@"            {");
+        sb.AppendLine($@"                if (global::System.Object.ReferenceEquals({fieldName}, value)) return;");
         sb.AppendLine($@"                GetTracker();");
         sb.AppendLine($@"                if ({fieldName} != null)");
         sb.AppendLine(@"                {");
-        sb.AppendLine($@"                    _tracker!.Unsubscribe({propName}, On{propName}Changed);");
+        sb.AppendLine($@"                    _tracker.Unsubscribe({fieldName}, On{propName}Changed);");
         sb.AppendLine(@"                }");
         sb.AppendLine($@"                {fieldName} = value;");
-        sb.AppendLine($@"                On{propName}Changed();");
         sb.AppendLine($@"                if ({fieldName} != null)");
         sb.AppendLine(@"                {");
-        sb.AppendLine($@"                    _tracker!.Subscribe({propName}, On{propName}Changed);");
+        sb.AppendLine($@"                    _tracker.Subscribe({fieldName}, On{propName}Changed);");
         sb.AppendLine(@"                }");
+        sb.AppendLine($@"                On{propName}Changed();");
         sb.AppendLine(@"            }");
         sb.AppendLine(@"        }");
     }
@@ -534,24 +509,32 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine(@"            {");
         sb.AppendLine(@"                GetTracker();");
         sb.AppendLine($@"                if ({wrapperFieldName} != null) return {wrapperFieldName};");
-        sb.AppendLine($@"                {fieldName} ??= new {field.Type}();");
+        sb.AppendLine($@"                {fieldName} ??= new {field.StorageTypeName}();");
         sb.AppendLine($@"                {wrapperFieldName} ??= new {wrapperType}(On{propName}Changed, {fieldName});");
         sb.AppendLine($@"                return {wrapperFieldName};");
         sb.AppendLine(@"            }");
         sb.AppendLine(@"            set");
         sb.AppendLine(@"            {");
-        sb.AppendLine($@"                if ({fieldName} != null)");
-        sb.AppendLine(@"                {");
-        sb.AppendLine($@"                    GetTracker().Unsubscribe({propName}, On{propName}Changed);");
-        sb.AppendLine(@"                }");
-        // Handle null safely
-        sb.AppendLine($@"                {fieldName} = value == null ? null : new {field.Type}(value);");
-        sb.AppendLine($@"                {wrapperFieldName} = {fieldName} == null ? null : new {wrapperType}(On{propName}Changed, {fieldName});");
+        sb.AppendLine(
+            $@"                if (global::System.Object.ReferenceEquals(value, {wrapperFieldName}) || global::System.Object.ReferenceEquals(value, {fieldName})) return;");
+        var copy = string.IsNullOrEmpty(field.CopyExpression)
+            ? $"new {field.StorageTypeName}({(field.PopulateCollection ? "" : "value")})"
+            : field.CopyExpression;
+        sb.AppendLine($"                {field.Type} replacement = value == null ? null : {copy};");
+        if (field.PopulateCollection && string.IsNullOrEmpty(field.CopyExpression))
+        {
+            sb.AppendLine("                if (value != null)");
+            sb.AppendLine("                    foreach (var item in value)");
+            sb.AppendLine(
+                $"                        (({interfaceName})replacement).Add({(field.IsDictionary ? "item.Key, item.Value" : "item")});");
+        }
+
+        sb.AppendLine("                GetTracker();");
+        sb.AppendLine($@"                {wrapperFieldName}?.Dispose();");
+        sb.AppendLine($@"                {fieldName} = replacement;");
+        sb.AppendLine(
+            $@"                {wrapperFieldName} = {fieldName} == null ? null : new {wrapperType}(On{propName}Changed, {fieldName});");
         sb.AppendLine($@"                On{propName}Changed();");
-        sb.AppendLine($@"                if ({fieldName} != null)");
-        sb.AppendLine(@"                {");
-        sb.AppendLine($@"                    GetTracker().Subscribe({propName}, On{propName}Changed);");
-        sb.AppendLine(@"                }");
         sb.AppendLine(@"            }");
         sb.AppendLine(@"        }");
     }
@@ -560,15 +543,7 @@ public class TrackableGenerator : IIncrementalGenerator
     {
         foreach (var attr in field.AdditionalAttributes)
         {
-            if (attr.Arguments.Length == 0)
-            {
-                sb.AppendLine($"        [{attr.AttributeFullName}]");
-            }
-            else
-            {
-                var args = string.Join(", ", attr.Arguments.Select(FormatAttributeArgument));
-                sb.AppendLine($"        [{attr.AttributeFullName}({args})]");
-            }
+            sb.AppendLine($"        [{attr}]");
         }
     }
 
@@ -579,7 +554,8 @@ public class TrackableGenerator : IIncrementalGenerator
             var slot = i / 64;
             var bit = i % 64;
             var propName = ToPropertyName(classInfo.Fields[i].Name);
-            sb.AppendLine($@"        private void On{propName}Changed() => GetTracker().MarkChanged({slot}, 1L << {bit}, this);");
+            sb.AppendLine(
+                $@"        private void On{propName}Changed() => GetTracker().MarkChanged({slot}, 1L << {bit}, this);");
         }
 
         sb.AppendLine();
@@ -591,11 +567,8 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine("        private void MarkPropClean(bool recursive = false)");
         sb.AppendLine("        {");
 
-        var trackableFields = classInfo.Fields.Where(f =>
-            f.IsTrackable ||
-            f.HasCollectionOfTrackable ||
-            f.HasSetOfTrackable ||
-            f.HasDictionaryWithTrackableValues).ToList();
+        var trackableFields = classInfo.Fields.Where(f => f.IsTrackable || f.IsCollection && f.NeedsElementTracking)
+            .ToList();
         if (trackableFields.Count > 0)
         {
             sb.AppendLine("            if (recursive)");
@@ -605,33 +578,14 @@ public class TrackableGenerator : IIncrementalGenerator
                 var fieldName = field.Name;
                 if (field.IsTrackable)
                 {
-                    sb.AppendLine($@"                if ({fieldName} is global::DeltaTrack.ITrackable trackable_{fieldName})");
+                    sb.AppendLine(
+                        $@"                if ({fieldName} is global::DeltaTrack.ITrackable trackable_{fieldName})");
                     sb.AppendLine($@"                    trackable_{fieldName}.MarkClean(true);");
                 }
                 else if (field.IsCollection)
                 {
-                    if (field.HasCollectionOfTrackable || field.HasSetOfTrackable)
-                    {
-                        sb.AppendLine($@"                if ({fieldName} != null)");
-                        sb.AppendLine($@"                {{");
-                        sb.AppendLine($@"                    foreach (var item in {fieldName})");
-                        sb.AppendLine($@"                    {{");
-                        sb.AppendLine($@"                        if (item is global::DeltaTrack.ITrackable trackableItem)");
-                        sb.AppendLine($@"                            trackableItem.MarkClean(true);");
-                        sb.AppendLine($@"                    }}");
-                        sb.AppendLine($@"                }}");
-                    }
-                    else if (field.HasDictionaryWithTrackableValues)
-                    {
-                        sb.AppendLine($@"                if ({fieldName} != null)");
-                        sb.AppendLine($@"                {{");
-                        sb.AppendLine($@"                    foreach (var kvp in {fieldName})");
-                        sb.AppendLine($@"                    {{");
-                        sb.AppendLine($@"                        if (kvp.Value is global::DeltaTrack.ITrackable trackableValue)");
-                        sb.AppendLine($@"                            trackableValue.MarkClean(true);");
-                        sb.AppendLine($@"                    }}");
-                        sb.AppendLine($@"                }}");
-                    }
+                    var items = field.IsDictionary ? $"{fieldName}?.Values" : fieldName;
+                    sb.AppendLine($"                global::DeltaTrack.ChangeTracker.MarkItemsClean({items});");
                 }
             }
 
@@ -666,7 +620,7 @@ public class TrackableGenerator : IIncrementalGenerator
         {
             sb.AppendLine("        public void MarkChanged(DirtyFlag flag)");
             sb.AppendLine("        {");
-            sb.AppendLine("            GetTracker().MarkChanged(0, (long)flag);");
+            sb.AppendLine("            GetTracker().MarkChanged(0, (long)flag, this);");
             sb.AppendLine("        }");
             sb.AppendLine();
         }
@@ -677,7 +631,7 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine("            {");
         sb.AppendLine("                if (_dirtyFlagNames[i] == property)");
         sb.AppendLine("                {");
-        sb.AppendLine("                    GetTracker().MarkChanged(i >> 6, 1L << (i & 63));");
+        sb.AppendLine("                    GetTracker().MarkChanged(i >> 6, 1L << (i & 63), this);");
         sb.AppendLine("                    return;");
         sb.AppendLine("                }");
         sb.AppendLine("            }");
@@ -689,10 +643,12 @@ public class TrackableGenerator : IIncrementalGenerator
 
     private static void AppendDeltaMethods(StringBuilder sb, ClassInfo classInfo)
     {
-        sb.AppendLine("        public global::System.Collections.Generic.IReadOnlyDictionary<string, object> GetDelta()");
+        sb.AppendLine(
+            "        public global::System.Collections.Generic.IReadOnlyDictionary<string, object> GetDelta()");
         sb.AppendLine("        {");
         sb.AppendLine("            var tracker = GetTracker();");
-        sb.AppendLine("            if (!tracker.HasChanges()) return new global::System.Collections.Generic.Dictionary<string, object>(0);");
+        sb.AppendLine(
+            "            if (!tracker.HasChanges()) return global::DeltaTrack.ChangeTracker.EmptyDelta;");
         sb.AppendLine("            var slots = tracker.DirtyFlagsArray;");
         sb.AppendLine("            var result = new global::System.Collections.Generic.Dictionary<string, object>();");
         for (var i = 0; i < classInfo.Fields.Length; i++)
@@ -700,14 +656,16 @@ public class TrackableGenerator : IIncrementalGenerator
             var slot = i / 64;
             var bit = i % 64;
             var propName = ToPropertyName(classInfo.Fields[i].Name);
-            sb.AppendLine($"            if ((slots[{slot}] & (1L << {bit})) != 0) result[\"{propName}\"] = (object){propName};");
+            sb.AppendLine(
+                $"            if ((slots[{slot}] & (1L << {bit})) != 0) result[\"{propName}\"] = (object){propName};");
         }
 
         sb.AppendLine("            return result;");
         sb.AppendLine("        }");
         sb.AppendLine();
 
-        sb.AppendLine("        public void ApplyDelta(global::System.Collections.Generic.IReadOnlyDictionary<string, object> delta)");
+        sb.AppendLine(
+            "        public void ApplyDelta(global::System.Collections.Generic.IReadOnlyDictionary<string, object> delta)");
         sb.AppendLine("        {");
         sb.AppendLine("            if (delta == null) return;");
         sb.AppendLine("            foreach (var kvp in delta)");
@@ -735,48 +693,13 @@ public class TrackableGenerator : IIncrementalGenerator
         sb.AppendLine("        }");
     }
 
-    private static bool IsCollectionOfTrackable(ITypeSymbol typeSymbol)
-    {
-        if (typeSymbol is not INamedTypeSymbol namedType) return false;
-
-        if (!ImplementsIListInterface(namedType)) return false;
-
-        if (namedType.TypeArguments.Length == 0) return false;
-
-        var elementType = namedType.TypeArguments[0];
-        return HasTrackableAttribute(elementType);
-    }
-
-    private static bool IsSetOfTrackable(ITypeSymbol typeSymbol)
-    {
-        if (typeSymbol is not INamedTypeSymbol namedType) return false;
-
-        if (!ImplementsISetInterface(namedType)) return false;
-
-        if (namedType.TypeArguments.Length == 0) return false;
-
-        var elementType = namedType.TypeArguments[0];
-        return HasTrackableAttribute(elementType);
-    }
-
-    private static bool IsDictionaryWithTrackableValues(ITypeSymbol typeSymbol)
-    {
-        if (typeSymbol is not INamedTypeSymbol namedType) return false;
-
-        if (!ImplementsIDictionaryInterface(namedType)) return false;
-
-        if (namedType.TypeArguments.Length < 2) return false;
-
-        var valueType = namedType.TypeArguments[1];
-        return HasTrackableAttribute(valueType);
-    }
-
     private static string ToPropertyName(string fieldName)
     {
+        fieldName = fieldName.TrimStart('@');
         if (string.IsNullOrEmpty(fieldName)) return fieldName;
         if (fieldName.StartsWith("_") && fieldName.Length > 1)
-            return char.ToUpper(fieldName[1]) + fieldName.Substring(2);
-        return char.ToUpper(fieldName[0]) + fieldName.Substring(1);
+            return char.ToUpperInvariant(fieldName[1]) + fieldName.Substring(2);
+        return char.ToUpperInvariant(fieldName[0]) + fieldName.Substring(1);
     }
 
     private static string FormatAttributeArgument(AttributeArgument arg)
@@ -786,7 +709,7 @@ public class TrackableGenerator : IIncrementalGenerator
             if (arg.EnumMemberName != null)
                 return $"{arg.EnumTypeName}.{arg.EnumMemberName}";
 
-            return $"{arg.EnumTypeName}.{arg.Value}";
+            return $"({arg.EnumTypeName}){FormatAttributeValue(arg.Value)}";
         }
 
         return FormatAttributeValue(arg.Value);
@@ -795,11 +718,13 @@ public class TrackableGenerator : IIncrementalGenerator
     private static string FormatAttributeValue(object value) => value switch
     {
         null => "null",
-        string s => $"\"{s.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"",
-        char c => $"'{c}'",
+        string s => Microsoft.CodeAnalysis.CSharp.SymbolDisplay.FormatLiteral(s, true),
+        char c => Microsoft.CodeAnalysis.CSharp.SymbolDisplay.FormatLiteral(c, true),
+        ITypeSymbol type => $"typeof({type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})",
         bool b => b.ToString().ToLowerInvariant(),
         int i => i.ToString(),
         long l => l + "L",
+        decimal d => d.ToString(CultureInfo.InvariantCulture) + "m",
         float f => f.ToString(CultureInfo.InvariantCulture) + "f",
         double d => d.ToString(CultureInfo.InvariantCulture),
         _ => value.ToString() ?? "null"
@@ -809,8 +734,10 @@ public class TrackableGenerator : IIncrementalGenerator
     {
         public bool ShouldGenerate { get; set; }
         public string Namespace { get; set; } = string.Empty;
-        public string ClassName { get; set; } = string.Empty;
-        public ImmutableArray<FieldInfo> Fields { get; set; } = ImmutableArray<FieldInfo>.Empty;
+        public string Declaration { get; set; } = string.Empty;
+        public string HintName { get; set; } = string.Empty;
+        public EquatableArray<string> ContainingTypes { get; set; }
+        public EquatableArray<FieldInfo> Fields { get; set; }
     }
 
     private record FieldInfo
@@ -821,17 +748,25 @@ public class TrackableGenerator : IIncrementalGenerator
         public bool IsTrackable { get; set; }
         public string WrapperTypeName { get; set; } = string.Empty;
         public string CollectionInterfaceName { get; set; } = string.Empty;
+        public string StorageTypeName { get; set; } = string.Empty;
+        public bool PopulateCollection { get; set; }
+        public string CopyExpression { get; set; } = string.Empty;
+        public bool IsDictionary { get; set; }
         public bool HasWrapper => !string.IsNullOrEmpty(WrapperTypeName);
-        public bool HasCollectionOfTrackable { get; set; }
-        public bool HasSetOfTrackable { get; set; }
-        public bool HasDictionaryWithTrackableValues { get; set; }
-        public ImmutableArray<PropertyAttributeInfo> AdditionalAttributes { get; set; } = ImmutableArray<PropertyAttributeInfo>.Empty;
+        public bool NeedsElementTracking { get; set; }
+
+        public EquatableArray<string> AdditionalAttributes { get; set; }
     }
 
-    private record PropertyAttributeInfo
+    private sealed class CollectionInfo
     {
-        public string AttributeFullName { get; set; } = string.Empty;
-        public ImmutableArray<AttributeArgument> Arguments { get; set; } = ImmutableArray<AttributeArgument>.Empty;
+        public string Kind { get; set; }
+        public ITypeSymbol ElementType { get; set; }
+        public string WrapperTypeName { get; set; }
+        public string InterfaceName { get; set; }
+        public string StorageTypeName { get; set; }
+        public bool PopulateCollection { get; set; }
+        public string CopyExpression { get; set; } = string.Empty;
     }
 
     private record AttributeArgument

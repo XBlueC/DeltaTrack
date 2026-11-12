@@ -1,12 +1,20 @@
 using System.Collections;
 using System.Globalization;
+using System.Collections.ObjectModel;
+using System.Runtime.CompilerServices;
 
 namespace DeltaTrack;
 
 public class ChangeTracker : IDisposable
 {
-    private readonly Dictionary<ITrackable, (int Count, Action OnChange)> _childSubscriptions = new();
+    public static IReadOnlyDictionary<string, object> EmptyDelta { get; } =
+        new ReadOnlyDictionary<string, object>(new Dictionary<string, object>(0));
+
+    private readonly Dictionary<(ITrackable Child, Action Handler), ChildSubscription> _childSubscriptions =
+        new(SubscriptionComparer.Instance);
+
     private bool _disposed;
+    private bool _cleaning;
     private int _suspendCount;
 
     public ChangeTracker(int slotCount)
@@ -46,9 +54,18 @@ public class ChangeTracker : IDisposable
 
     public void MarkClean(bool recursive = false)
     {
-        OnClean?.Invoke(recursive);
-        for (var i = 0; i < DirtyFlagsArray.Length; i++)
-            DirtyFlagsArray[i] = 0;
+        if (_cleaning) throw new InvalidOperationException("A cycle was detected during recursive tracking cleanup.");
+        _cleaning = true;
+        try
+        {
+            OnClean?.Invoke(recursive);
+            for (var i = 0; i < DirtyFlagsArray.Length; i++)
+                DirtyFlagsArray[i] = 0;
+        }
+        finally
+        {
+            _cleaning = false;
+        }
     }
 
     public IDisposable SuspendTracking() => new SuspendScope(this);
@@ -79,14 +96,16 @@ public class ChangeTracker : IDisposable
     {
         if (child == null || _disposed) return;
 
-        if (_childSubscriptions.TryGetValue(child, out var existing))
+        var key = (child, onChange);
+        if (_childSubscriptions.TryGetValue(key, out var existing))
         {
-            _childSubscriptions[child] = (existing.Count + 1, existing.OnChange);
+            existing.Count++;
         }
         else
         {
-            _childSubscriptions[child] = (1, onChange);
-            child.OnChanged += onChange;
+            var subscription = new ChildSubscription(child, onChange);
+            child.OnChanged += subscription.Callback;
+            _childSubscriptions.Add(key, subscription);
         }
     }
 
@@ -94,16 +113,17 @@ public class ChangeTracker : IDisposable
     {
         if (child == null || _disposed) return;
 
-        if (_childSubscriptions.TryGetValue(child, out var existing))
+        var key = (child, onChange);
+        if (_childSubscriptions.TryGetValue(key, out var existing))
         {
             if (existing.Count <= 1)
             {
-                _childSubscriptions.Remove(child);
-                child.OnChanged -= existing.OnChange;
+                _childSubscriptions.Remove(key);
+                child.OnChanged -= existing.Callback;
             }
             else
             {
-                _childSubscriptions[child] = (existing.Count - 1, existing.OnChange);
+                existing.Count--;
             }
         }
     }
@@ -116,12 +136,23 @@ public class ChangeTracker : IDisposable
         }
         else if (item is IEnumerable enumerable && item is not string)
         {
-            foreach (var element in enumerable)
-            {
-                HandleItemAdded(element, onChange);
-            }
+            HandleEnumerable(enumerable, onChange, true, new HashSet<object>(ElementIdentityComparer<object>.Instance));
         }
     }
+
+    public void HandleItemAdded<T>(T item, Action onChange)
+    {
+        if (CanContainTrackable<T>()) HandleItemAdded((object)item, onChange);
+    }
+
+    public void HandleItemRemoved<T>(T item, Action onChange)
+    {
+        if (CanContainTrackable<T>()) HandleItemRemoved((object)item, onChange);
+    }
+
+    private static bool CanContainTrackable<T>() =>
+        !typeof(T).IsValueType || typeof(ITrackable).IsAssignableFrom(typeof(T)) ||
+        typeof(IEnumerable).IsAssignableFrom(typeof(T));
 
     public void HandleItemRemoved(object item, Action onChange)
     {
@@ -131,10 +162,53 @@ public class ChangeTracker : IDisposable
         }
         else if (item is IEnumerable enumerable && item is not string)
         {
-            foreach (var element in enumerable)
+            HandleEnumerable(enumerable, onChange, false,
+                new HashSet<object>(ElementIdentityComparer<object>.Instance));
+        }
+    }
+
+    private void HandleEnumerable(IEnumerable items, Action onChange, bool added, HashSet<object> path)
+    {
+        if (!path.Add(items)) throw new InvalidOperationException("A cycle was detected in a tracked collection.");
+        try
+        {
+            foreach (var item in items is IDictionary dictionary ? dictionary.Values : items)
             {
-                HandleItemRemoved(element, onChange);
+                if (item is ITrackable child)
+                {
+                    if (added) SubscribeChild(child, onChange);
+                    else UnsubscribeChild(child, onChange);
+                }
+                else if (item is IEnumerable nested && item is not string)
+                    HandleEnumerable(nested, onChange, added, path);
             }
+        }
+        finally
+        {
+            path.Remove(items);
+        }
+    }
+
+    public static void MarkItemsClean(IEnumerable items)
+    {
+        if (items != null) MarkItemsClean(items, new HashSet<object>(ElementIdentityComparer<object>.Instance));
+    }
+
+    private static void MarkItemsClean(IEnumerable items, HashSet<object> path)
+    {
+        if (!path.Add(items))
+            throw new InvalidOperationException("A cycle was detected during collection tracking cleanup.");
+        try
+        {
+            foreach (var item in items is IDictionary dictionary ? dictionary.Values : items)
+            {
+                if (item is ITrackable child) child.MarkClean(true);
+                else if (item is IEnumerable nested && item is not string) MarkItemsClean(nested, path);
+            }
+        }
+        finally
+        {
+            path.Remove(items);
         }
     }
 
@@ -148,16 +222,14 @@ public class ChangeTracker : IDisposable
 
     public void Subscribe(object item, Action onChange)
     {
-        if (item == null) return;
         if (item is ITrackable trackable)
-            trackable.OnChanged += onChange;
+            SubscribeChild(trackable, onChange);
     }
 
     public void Unsubscribe(object item, Action onChange)
     {
-        if (item == null) return;
         if (item is ITrackable trackable)
-            trackable.OnChanged -= onChange;
+            UnsubscribeChild(trackable, onChange);
     }
 
     public void Dispose()
@@ -165,9 +237,9 @@ public class ChangeTracker : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        foreach (var entry in _childSubscriptions)
+        foreach (var subscription in _childSubscriptions.Values)
         {
-            entry.Key.OnChanged -= entry.Value.OnChange;
+            subscription.Child.OnChanged -= subscription.Callback;
         }
 
         _childSubscriptions.Clear();
@@ -177,6 +249,48 @@ public class ChangeTracker : IDisposable
         OnChanged = null;
         OnClean = null;
         OnChangedDetailed = null;
+    }
+
+    private sealed class ChildSubscription
+    {
+        private readonly Action _handler;
+        private bool _notifying;
+        public ITrackable Child { get; }
+        public Action Callback { get; }
+        public int Count { get; set; } = 1;
+
+        public ChildSubscription(ITrackable child, Action handler)
+        {
+            Child = child;
+            _handler = handler;
+            Callback = Notify;
+        }
+
+        private void Notify()
+        {
+            if (_notifying)
+                throw new InvalidOperationException("A cycle was detected while propagating a tracked child change.");
+            _notifying = true;
+            try
+            {
+                _handler?.Invoke();
+            }
+            finally
+            {
+                _notifying = false;
+            }
+        }
+    }
+
+    private sealed class SubscriptionComparer : IEqualityComparer<(ITrackable Child, Action Handler)>
+    {
+        public static readonly SubscriptionComparer Instance = new();
+
+        public bool Equals((ITrackable Child, Action Handler) x, (ITrackable Child, Action Handler) y) =>
+            ReferenceEquals(x.Child, y.Child) && Equals(x.Handler, y.Handler);
+
+        public int GetHashCode((ITrackable Child, Action Handler) key) =>
+            unchecked(RuntimeHelpers.GetHashCode(key.Child) * 397 ^ (key.Handler?.GetHashCode() ?? 0));
     }
 
     public static T DeltaCast<T>(object value)
