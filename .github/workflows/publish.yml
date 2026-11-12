@@ -1,0 +1,133 @@
+name: Publish NuGet
+
+on:
+  release:
+    types: [ published ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to validate and pack (does not publish), e.g. v1.1.2'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nuget-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_VERSION: '10.0.x'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Validate release version
+        id: version
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          RELEASE_IS_PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:RELEASE_TAG
+          if ($tag -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$') {
+            throw "Expected a version tag such as v1.1.2 or v1.1.2-rc.1; got '$tag'."
+          }
+          $version = (dotnet msbuild DeltaTrack/DeltaTrack.csproj -getProperty:Version -nologo).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Could not evaluate the project version.' }
+          if ($tag.Substring(1) -cne $version) {
+            throw "Tag '$tag' does not match project version '$version'."
+          }
+          if ($env:GITHUB_EVENT_NAME -eq 'release') {
+            $isPrerelease = $version.Contains('-')
+            if ($isPrerelease -ne ($env:RELEASE_IS_PRERELEASE -eq 'true')) {
+              throw 'The GitHub pre-release checkbox must match the package version suffix.'
+            }
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Validated DeltaTrack $version"
+
+      - name: Restore
+        run: dotnet restore DeltaTrack.slnx
+
+      - name: Build
+        run: dotnet build DeltaTrack.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test DeltaTrack.slnx -c Release --no-build --no-restore --verbosity normal
+
+      - name: Pack
+        run: dotnet pack DeltaTrack/DeltaTrack.csproj -c Release --no-build --no-restore --output artifacts
+
+      - name: Verify package contents
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = "artifacts/DeltaTrack.$env:PACKAGE_VERSION.nupkg"
+          $archive = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $package))
+          try {
+            foreach ($path in @('lib/netstandard2.0/DeltaTrack.dll', 'analyzers/dotnet/cs/Analyzers.dll', 'README.md')) {
+              if ($null -eq $archive.GetEntry($path)) { throw "Package is missing $path" }
+            }
+          } finally {
+            $archive.Dispose()
+          }
+
+      - name: Save NuGet package
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuget-package
+          path: artifacts/*.nupkg
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Download tested package
+        uses: actions/download-artifact@v8
+        with:
+          name: nuget-package
+          path: artifacts
+
+      - name: NuGet login
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: XBlueC
+
+      - name: Publish to NuGet.org
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: |
+          $packages = @(Get-ChildItem artifacts/DeltaTrack.*.nupkg)
+          if ($packages.Count -ne 1) { throw 'Expected exactly one DeltaTrack package.' }
+          dotnet nuget push $packages[0].FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+          if ($LASTEXITCODE -ne 0) { throw 'NuGet publish failed.' }

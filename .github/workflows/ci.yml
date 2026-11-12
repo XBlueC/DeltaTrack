@@ -7,26 +7,26 @@ on:
     branches: [ main ]
 
 env:
-  DOTNET_VERSION: '10.0'
+  DOTNET_VERSION: '10.0.x'
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v7
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
-    - name: Restore
-      run: dotnet restore
+      - name: Restore
+        run: dotnet restore DeltaTrack.slnx
 
-    - name: Build
-      run: dotnet build --no-restore
+      - name: Build
+        run: dotnet build DeltaTrack.slnx -c Release --no-restore
 
-    - name: Test
-      run: dotnet test --no-build --verbosity normal
+      - name: Test
+        run: dotnet test DeltaTrack.slnx -c Release --no-build --no-restore --verbosity normal
